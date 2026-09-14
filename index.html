@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ПВО Украины: Воздушный Щит</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+        body, html { width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #0b0f19; color: #fff; }
+        
+        #map { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 1; }
+        #gameCanvas { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 2; pointer-events: none; }
+        
+        #top-bar { position: absolute; top: 12px; left: 12px; z-index: 10; display: flex; gap: 10px; align-items: center; }
+        .stat-card { background: rgba(15, 23, 42, 0.9); border: 1px solid #334155; padding: 8px 16px; border-radius: 8px; backdrop-filter: blur(8px); font-size: 14px; font-weight: bold; }
+        .stat-card span { color: #38bdf8; }
+        .stat-card.money span { color: #facc15; }
+        
+        #top-controls { position: absolute; top: 12px; right: 12px; z-index: 10; display: flex; gap: 8px; }
+        .ctrl-btn { background: rgba(15, 23, 42, 0.9); border: 1px solid #334155; color: white; padding: 8px 14px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 13px; backdrop-filter: blur(8px); }
+        .ctrl-btn:active { background: #1e293b; }
+
+        #sidebar-shop { 
+            position: absolute; 
+            top: 60px; 
+            left: 12px; 
+            bottom: 20px; 
+            width: 160px; 
+            z-index: 10; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 8px; 
+            overflow-y: auto; 
+            padding-right: 4px;
+            -webkit-overflow-scrolling: touch;
+        }
+        #sidebar-shop::-webkit-scrollbar { width: 4px; }
+        #sidebar-shop::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+
+        .shop-item { 
+            background: rgba(15, 23, 42, 0.9); 
+            border: 1px solid #334155; 
+            border-radius: 8px; 
+            padding: 10px; 
+            cursor: pointer; 
+            transition: all 0.15s ease;
+            backdrop-filter: blur(8px);
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .shop-item:hover, .shop-item.active { border-color: #38bdf8; background: rgba(30, 41, 59, 0.95); }
+        .shop-item:disabled { opacity: 0.4; cursor: not-allowed; border-color: #1e293b !important; }
+        .shop-item .name { font-size: 12px; font-weight: bold; color: #f8fafc; }
+        .shop-item .price { font-size: 11px; color: #facc15; font-weight: bold; }
+        .shop-item .desc { font-size: 9px; color: #94a3b8; }
+
+        .modal { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 100; background: rgba(11, 15, 25, 0.92); display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 16px; padding: 20px; }
+        .modal h1 { font-size: 28px; color: #ef4444; text-transform: uppercase; letter-spacing: 2px; text-align: center; }
+        .btn { background: #2563eb; color: white; border: none; padding: 14px 28px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; min-width: 200px; text-align: center; }
+        .btn:active { transform: scale(0.98); }
+        .btn-danger { background: #dc2626; }
+
+        #error-toast { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 20; background: rgba(220, 38, 38, 0.9); color: white; padding: 8px 16px; border-radius: 20px; font-size: 12px; font-weight: bold; display: none; pointer-events: none; }
+    </style>
+</head>
+<body>
+
+    <div id="map"></div>
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="top-bar">
+        <div class="stat-card money">Бюджет: $<span id="money-display">2000</span></div>
+        <div class="stat-card">Сбито: <span id="score-display">0</span></div>
+    </div>
+
+    <div id="top-controls">
+        <button class="ctrl-btn" onclick="toggleSpeed()">Ускорение: <span id="speed-btn-txt">x1</span></button>
+        <button class="ctrl-btn" onclick="openPauseMenu()">⚙️</button>
+    </div>
+
+    <div id="sidebar-shop"></div>
+    <div id="error-toast">Размещение запрещено вне границ или в море!</div>
+
+    <div id="main-menu" class="modal">
+        <h1>ПВО Украины</h1>
+        <p style="color: #94a3b8; font-size: 13px; text-align: center; max-width: 300px;">Защитите инфраструктуру от налета вражеских БПЛА и ракет.</p>
+        <button class="btn" onclick="startNewGame()">Начать игру</button>
+        <button class="btn" onclick="loadGame()">Загрузить</button>
+    </div>
+
+    <div id="pause-menu" class="modal" style="display: none;">
+        <h1>Пауза</h1>
+        <button class="btn" onclick="resumeGame()">Продолжить</button>
+        <button class="btn" onclick="saveGame()">Сохранить</button>
+        <button class="btn btn-danger" onclick="toMainMenu()">В меню</button>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const apiKey = 'cb1_3kmd_1_e4483342a33c98df984b7e40';
+
+        // Генерация картинки Шахеда в точности как на фотографии (встроенный SVG без внешних файлов)
+        const shahedImg = new Image();
+        shahedImg.src = 'data:image/svg+xml;utf8,' + encodeURIComponent(`
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="500" height="500">
+          <g transform="translate(250, 250)">
+            <!-- Крылья (треугольное дельта-крыло, матовый черный) -->
+            <path d="M 0 -220 L -210 180 L -180 180 L -140 160 L 0 160 L 140 160 L 180 180 L 210 180 Z" fill="#181a1c"/>
+            
+            <!-- Вертикальные шайбы (кили на кончиках крыльев) -->
+            <path d="M -210 180 L -220 220 L -205 220 L -195 180 Z" fill="#0d0e10"/>
+            <path d="M 210 180 L 220 220 L 205 220 L 195 180 Z" fill="#0d0e10"/>
+
+            <!-- Вытянутый фюзеляж с округлым носом -->
+            <path d="M 0 -235 C -25 -235, -30 -160, -30 -20 L -30 165 L 30 165 L 30 -20 C 30 -160, 25 -235, 0 -235 Z" fill="#202428"/>
+            <path d="M 0 -235 C -22 -235, -25 -170, -25 -100 L 25 -100 C 25 -170, 22 -235, 0 -235 Z" fill="#141618"/>
+
+            <!-- Технические прямоугольные лючки на крыльях -->
+            <rect x="-105" y="10" width="35" height="45" rx="3" fill="#272c32" stroke="#101214" stroke-width="1.5"/>
+            <rect x="70" y="10" width="35" height="45" rx="3" fill="#272c32" stroke="#101214" stroke-width="1.5"/>
+            <rect x="-150" y="100" width="22" height="22" rx="2" fill="#272c32" stroke="#101214" stroke-width="1.5"/>
+            <rect x="128" y="100" width="22" height="22" rx="2" fill="#272c32" stroke="#101214" stroke-width="1.5"/>
+
+            <!-- Элевоны (рули высоты на задней кромке) -->
+            <rect x="-180" y="162" width="135" height="15" fill="#111315" stroke="#000" stroke-width="1"/>
+            <rect x="45" y="162" width="135" height="15" fill="#111315" stroke="#000" stroke-width="1"/>
+
+            <!-- Двигатель в хвосте -->
+            <rect x="-18" y="165" width="36" height="25" rx="3" fill="#30363d" stroke="#111315" stroke-width="2"/>
+            
+            <!-- Двухлопастной толкающий винт -->
+            <ellipse cx="0" cy="198" rx="85" ry="7" fill="#181a1c"/>
+            <circle cx="0" cy="198" r="6" fill="#424952"/>
+          </g>
+        </svg>
+        `);
+
+        const map = L.map('map', {
+            center: [48.5, 31.2],
+            zoom: 6,
+            minZoom: 5,
+            maxZoom: 10,
+            zoomControl: false
+        });
+
+        L.tileLayer(`https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png?key=${apiKey}`, {
+            subdomains: 'abcd',
+            maxZoom: 19
+        }).addTo(map);
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        const ukraineBoundsPolygon = [
+            [52.3, 33.2], [52.1, 31.8], [51.5, 30.6], [51.3, 29.1], [51.9, 28.2],
+            [51.5, 25.1], [50.8, 24.2], [49.9, 22.7], [48.0, 23.6], [47.9, 25.8],
+            [48.2, 26.6], [48.3, 27.5], [46.4, 29.9], [45.4, 29.6], [45.3, 30.2],
+            [46.6, 31.5], [46.5, 32.5], [46.1, 33.6], [46.0, 34.8], [46.8, 36.8],
+            [47.1, 38.2], [48.5, 38.3], [49.9, 40.1], [50.4, 38.0], [51.2, 35.3], [52.3, 33.2]
+        ];
+
+        function isPointInPolygon(point, vs) {
+            let x = point[0], y = point[1];
+            let inside = false;
+            for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+                let xi = vs[i][0], yi = vs[i][1];
+                let xj = vs[j][0], yj = vs[j][1];
+                let intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+                if (intersect) inside = !inside;
+            }
+            return inside;
+        }
+
+        const UNIT_TYPES = {
+            fpv: { name: 'FPV-Перехватчик', cost: 150, range: 45000, fireRate: 0.1, damage: 45, bulletSpeed: 70, type: 'jet', speed: 8, accuracy: 0.9, desc: 'Быстрый дрон-камикадзе' },
+            mg_pickup: { name: 'Пикап с ДШК', cost: 250, range: 35000, fireRate: 0.15, damage: 3, bulletSpeed: 110, type: 'mobile', speed: 12, accuracy: 0.65, desc: 'Мобильная группа ПВО' },
+            zu23: { name: 'ЗУ-23-2', cost: 450, range: 50000, fireRate: 0.12, damage: 5, bulletSpeed: 130, type: 'static', accuracy: 0.72, desc: 'Спаренная зенитная установка' },
+            gepard: { name: 'ЗСУ Gepard', cost: 900, range: 75000, fireRate: 0.08, damage: 7, bulletSpeed: 160, type: 'mobile', speed: 10, accuracy: 0.85, desc: 'Скорострельная зенитка' },
+            buk: { name: 'ЗРК Бук-М1', cost: 1600, range: 130000, fireRate: 1.6, damage: 70, bulletSpeed: 220, type: 'static', accuracy: 0.95, desc: 'Средний ракетный комплекс' },
+            patriot: { name: 'ЗРК Patriot', cost: 2800, range: 200000, fireRate: 2.2, damage: 130, bulletSpeed: 300, type: 'static', accuracy: 0.99, desc: 'Тяжелое дальнобойное ПВО' },
+            mig29: { name: 'МиГ-29', cost: 3500, range: 150000, fireRate: 1.0, damage: 50, bulletSpeed: 250, type: 'jet', speed: 25, accuracy: 0.9, desc: 'Быстрый перехватчик' }
+        };
+
+        const ENEMY_TYPES = {
+            shahed: { name: 'Шахед-136', speed: 2.1, hp: 35, maxHp: 35, reward: 120, key: 'shahed' },
+            gerbera: { name: 'Гербера', speed: 2.2, hp: 12, maxHp: 12, reward: 40, key: 'gerbera' },
+            orlan: { name: 'Орлан-10', speed: 2.0, hp: 18, maxHp: 18, reward: 60, key: 'orlan' },
+            zala: { name: 'ZALA 421', speed: 2.4, hp: 15, maxHp: 15, reward: 70, key: 'zala' },
+            supercam: { name: 'Supercam', speed: 2.6, hp: 20, maxHp: 20, reward: 85, key: 'supercam' },
+            lancet: { name: 'Ланцет', speed: 3.2, hp: 10, maxHp: 10, reward: 90, key: 'lancet' },
+            missile: { name: 'Ракета Х-101', speed: 5.5, hp: 55, maxHp: 55, reward: 300, key: 'missile' }
+        };
+
+        const spawnPoints = [
+            { lat: 51.8, lng: 31.0 }, { lat: 52.1, lng: 33.0 },
+            { lat: 50.8, lng: 35.5 }, { lat: 49.8, lng: 38.2 },
+            { lat: 45.2, lng: 33.5 }, { lat: 46.1, lng: 36.5 }
+        ];
+
+        const targetDestinations = [
+            { lat: 50.45, lng: 30.52 }, { lat: 49.99, lng: 36.23 },
+            { lat: 48.46, lng: 35.04 }, { lat: 46.48, lng: 30.72 },
+            { lat: 49.83, lng: 24.02 }, { lat: 47.83, lng: 35.13 }
+        ];
+
+        let gameState = { money: 2000, score: 0, speed: 1, selectedBuild: null, selectedUnit: null, isPaused: true };
+        let units = [], enemies = [], bullets = [], explosions = [];
+
+        function latLngToPoint(lat, lng) {
+            const p = map.latLngToContainerPoint([lat, lng]);
+            return { x: p.x, y: p.y };
+        }
+
+        class Unit {
+            constructor(lat, lng, type) {
+                this.lat = lat;
+                this.lng = lng;
+                this.type = type;
+                this.stats = UNIT_TYPES[type];
+                this.targetLat = lat;
+                this.targetLng = lng;
+                this.lastShot = 0;
+                this.isMoving = false;
+                this.angle = 0;
+            }
+
+            update(dt) {
+                if (this.isMoving) {
+                    const cur = L.latLng(this.lat, this.lng);
+                    const dest = L.latLng(this.targetLat, this.targetLng);
+                    const dist = cur.distanceTo(dest);
+
+                    if (dist < 100) {
+                        this.isMoving = false;
+                    } else {
+                        const moveDist = (this.stats.speed * 1000 * dt);
+                        const ratio = Math.min(moveDist / dist, 1);
+                        const p1 = latLngToPoint(this.lat, this.lng);
+                        this.lat += (this.targetLat - this.lat) * ratio;
+                        this.lng += (this.targetLng - this.lng) * ratio;
+                        const p2 = latLngToPoint(this.lat, this.lng);
+                        this.angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+                    }
+                }
+
+                this.lastShot += dt;
+                if (this.lastShot >= this.stats.fireRate) {
+                    const target = this.findTarget();
+                    if (target) {
+                        this.shoot(target);
+                        this.lastShot = 0;
+                    }
+                }
+            }
+
+            findTarget() {
+                let closest = null;
+                let minDist = this.stats.range;
+                const pos = L.latLng(this.lat, this.lng);
+
+                for (let enemy of enemies) {
+                    const ePos = L.latLng(enemy.lat, enemy.lng);
+                    const d = pos.distanceTo(ePos);
+                    if (d <= minDist) {
+                        minDist = d;
+                        closest = enemy;
+                    }
+                }
+                return closest;
+            }
+
+            shoot(target) {
+                const isHit = Math.random() < this.stats.accuracy;
+                bullets.push(new Bullet(this.lat, this.lng, target, this.stats.damage, this.stats.bulletSpeed, isHit));
+            }
+
+            draw() {
+                const p = latLngToPoint(this.lat, this.lng);
+
+                if (gameState.selectedUnit === this) {
+                    const metersPerPixel = 40075016.686 * Math.abs(Math.cos(this.lat * Math.PI / 180)) / Math.pow(2, map.getZoom() + 8);
+                    const radiusPx = this.stats.range / metersPerPixel;
+                    
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, radiusPx, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(56, 189, 248, 0.12)';
+                    ctx.fill();
+                    ctx.strokeStyle = '#38bdf8';
+                    ctx.lineWidth = 1.5;
+                    ctx.stroke();
+                }
+
+                ctx.save();
+                ctx.translate(p.x, p.y);
+
+                if (this.type === 'fpv') {
+                    ctx.rotate(this.angle + Math.PI/2);
+                    ctx.fillStyle = '#ef4444';
+                    ctx.fillRect(-3, -3, 6, 6);
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(-5, -5, 10, 10);
+                } else if (this.type === 'mig29') {
+                    ctx.rotate(this.angle + Math.PI/2);
+                    ctx.fillStyle = '#38bdf8';
+                    ctx.beginPath();
+                    ctx.moveTo(0, -9);
+                    ctx.lineTo(7, 8);
+                    ctx.lineTo(-7, 8);
+                    ctx.fill();
+                } else {
+                    ctx.fillStyle = '#0284c7';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 7, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = 1.5;
+                    ctx.stroke();
+                }
+                ctx.restore();
+            }
+        }
+
+        class Enemy {
+            constructor(startPoint) {
+                this.lat = startPoint.lat;
+                this.lng = startPoint.lng;
+                
+                const keys = Object.keys(ENEMY_TYPES);
+                const randType = keys[Math.floor(Math.random() * keys.length)];
+                this.stats = { ...ENEMY_TYPES[randType] };
+                this.hp = this.stats.hp;
+
+                const dest = targetDestinations[Math.floor(Math.random() * targetDestinations.length)];
+                this.targetLat = dest.lat;
+                this.targetLng = dest.lng;
+                
+                const startP = latLngToPoint(this.lat, this.lng);
+                const destP = latLngToPoint(this.targetLat, this.targetLng);
+                this.angle = Math.atan2(destP.y - startP.y, destP.x - startP.x);
+            }
+
+            update(dt) {
+                const cur = L.latLng(this.lat, this.lng);
+                const dest = L.latLng(this.targetLat, this.targetLng);
+                const dist = cur.distanceTo(dest);
+
+                if (dist < 3000) {
+                    createExplosion(this.lat, this.lng);
+                    return false;
+                }
+
+                const moveDist = (this.stats.speed * 1000 * dt);
+                const ratio = Math.min(moveDist / dist, 1);
+                
+                this.lat += (this.targetLat - this.lat) * ratio;
+                this.lng += (this.targetLng - this.lng) * ratio;
+                return true;
+            }
+
+            draw() {
+                const p = latLngToPoint(this.lat, this.lng);
+
+                ctx.save();
+                ctx.translate(p.x, p.y);
+                
+                // Вращение по направлению полета
+                ctx.rotate(this.angle + Math.PI/2);
+
+                if (this.stats.key === 'shahed') {
+                    // Отрисовка точной фото-копии Шахеда без внешних файлов
+                    ctx.drawImage(shahedImg, -18, -18, 36, 36);
+                } else {
+                    // Отрисовка стандартных оранжевых БПЛА
+                    ctx.fillStyle = '#f97316';
+                    ctx.beginPath();
+                    ctx.moveTo(0, -6);
+                    ctx.lineTo(5, 6);
+                    ctx.lineTo(-5, 6);
+                    ctx.fill();
+                }
+
+                ctx.restore();
+
+                // Полоска здоровья
+                if (this.hp < this.stats.maxHp) {
+                    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+                    ctx.fillRect(p.x - 10, p.y - 14, 20, 3);
+                    ctx.fillStyle = '#22c55e';
+                    ctx.fillRect(p.x - 10, p.y - 14, (this.hp / this.stats.maxHp) * 20, 3);
+                }
+            }
+        }
+
+        class Bullet {
+            constructor(lat, lng, target, damage, speed, isHit) {
+                this.lat = lat;
+                this.lng = lng;
+                this.target = target;
+                this.damage = damage;
+                this.speed = speed;
+                this.isHit = isHit;
+                this.alive = true;
+
+                this.destLat = target.lat + (isHit ? 0 : (Math.random() - 0.5) * 0.08);
+                this.destLng = target.lng + (isHit ? 0 : (Math.random() - 0.5) * 0.08);
+            }
+
+            update(dt) {
+                const cur = L.latLng(this.lat, this.lng);
+                const dest = L.latLng(this.destLat, this.destLng);
+                const dist = cur.distanceTo(dest);
+
+                if (dist < 2000) {
+                    this.alive = false;
+                    if (this.isHit && this.target && this.target.hp > 0) {
+                        this.target.hp -= this.damage;
+                        if (this.target.hp <= 0) {
+                            createExplosion(this.target.lat, this.target.lng);
+                            gameState.money += this.target.stats.reward;
+                            gameState.score += 1;
+                            updateUI();
+                        }
+                    }
+                    return;
+                }
+
+                const moveDist = (this.speed * 1000 * dt);
+                const ratio = Math.min(moveDist / dist, 1);
+                this.lat += (this.destLat - this.lat) * ratio;
+                this.lng += (this.destLng - this.lng) * ratio;
+            }
+
+            draw() {
+                const p = latLngToPoint(this.lat, this.lng);
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
+                ctx.fillStyle = '#facc15';
+                ctx.shadowColor = '#eab308';
+                ctx.shadowBlur = 6;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        class Explosion {
+            constructor(x, y) { this.x = x; this.y = y; this.r = 2; this.life = 1.0; }
+            update(dt) { this.r += dt * 30; this.life -= dt * 2.0; }
+            draw() {
+                if (this.life <= 0) return;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, Math.max(1, this.r), 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(239, 68, 68, ${Math.max(0, this.life)})`;
+                ctx.fill();
+            }
+        }
+
+        function createExplosion(lat, lng) {
+            const p = latLngToPoint(lat, lng);
+            explosions.push(new Explosion(p.x, p.y));
+        }
+
+        function initShopUI() {
+            const shopContainer = document.getElementById('sidebar-shop');
+            shopContainer.innerHTML = '';
+
+            for (let key in UNIT_TYPES) {
+                const u = UNIT_TYPES[key];
+                const item = document.createElement('button');
+                item.className = 'shop-item';
+                item.id = `shop-btn-${key}`;
+                item.onclick = () => selectBuild(key);
+                item.innerHTML = `
+                    <span class="name">${u.name}</span>
+                    <span class="price">$${u.cost}</span>
+                    <span class="desc">${u.desc}</span>
+                `;
+                shopContainer.appendChild(item);
+            }
+        }
+
+        function selectBuild(type) {
+            if (gameState.selectedBuild === type) {
+                gameState.selectedBuild = null;
+            } else {
+                gameState.selectedBuild = type;
+            }
+            updateShopUI();
+        }
+
+        function updateShopUI() {
+            document.querySelectorAll('.shop-item').forEach(el => el.classList.remove('active'));
+            if (gameState.selectedBuild) {
+                const activeBtn = document.getElementById(`shop-btn-${gameState.selectedBuild}`);
+                if (activeBtn) activeBtn.classList.add('active');
+            }
+
+            for (let key in UNIT_TYPES) {
+                const btn = document.getElementById(`shop-btn-${key}`);
+                if (btn) btn.disabled = gameState.money < UNIT_TYPES[key].cost;
+            }
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('error-toast');
+            toast.innerText = msg;
+            toast.style.display = 'block';
+            setTimeout(() => { toast.style.display = 'none'; }, 2000);
+        }
+
+        map.on('click', function(e) {
+            if (gameState.isPaused) return;
+
+            if (gameState.selectedBuild) {
+                const isInside = isPointInPolygon([e.latlng.lat, e.latlng.lng], ukraineBoundsPolygon);
+                
+                if (!isInside) {
+                    showToast('Нельзя ставить в море или за границей!');
+                    return;
+                }
+
+                const cost = UNIT_TYPES[gameState.selectedBuild].cost;
+                if (gameState.money >= cost) {
+                    gameState.money -= cost;
+                    units.push(new Unit(e.latlng.lat, e.latlng.lng, gameState.selectedBuild));
+                    gameState.selectedBuild = null;
+                    updateShopUI();
+                    updateUI();
+                }
+                return;
+            }
+
+            const clickPos = map.latLngToContainerPoint(e.latlng);
+            let clickedUnit = null;
+
+            for (let u of units) {
+                const uPos = map.latLngToContainerPoint([u.lat, u.lng]);
+                if (Math.hypot(clickPos.x - uPos.x, clickPos.y - uPos.y) < 22) {
+                    clickedUnit = u;
+                    break;
+                }
+            }
+
+            if (clickedUnit) {
+                gameState.selectedUnit = clickedUnit;
+            } else if (gameState.selectedUnit && (gameState.selectedUnit.stats.type === 'mobile' || gameState.selectedUnit.stats.type === 'jet')) {
+                gameState.selectedUnit.targetLat = e.latlng.lat;
+                gameState.selectedUnit.targetLng = e.latlng.lng;
+                gameState.selectedUnit.isMoving = true;
+            } else {
+                gameState.selectedUnit = null;
+            }
+        });
+
+        let lastTime = performance.now();
+        let spawnTimer = 0;
+
+        function gameLoop(now) {
+            const dt = Math.min((now - lastTime) / 1000, 0.1) * gameState.speed;
+            lastTime = now;
+
+            if (!gameState.isPaused) {
+                spawnTimer += dt;
+                if (spawnTimer >= 4.5 / gameState.speed) {
+                    const sp = spawnPoints[Math.floor(Math.random() * spawnPoints.length)];
+                    enemies.push(new Enemy(sp));
+                    spawnTimer = 0;
+                }
+
+                units.forEach(u => u.update(dt));
+                enemies = enemies.filter(e => e.update(dt) && e.hp > 0);
+                bullets.forEach(b => b.update(dt));
+                bullets = bullets.filter(b => b.alive);
+                explosions.forEach(ex => ex.update(dt));
+                explosions = explosions.filter(ex => ex.life > 0);
+            }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            units.forEach(u => u.draw());
+            enemies.forEach(e => e.draw());
+            bullets.forEach(b => b.draw());
+            explosions.forEach(ex => ex.draw());
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function updateUI() {
+            document.getElementById('money-display').innerText = Math.floor(gameState.money);
+            document.getElementById('score-display').innerText = gameState.score;
+            updateShopUI();
+        }
+
+        function toggleSpeed() {
+            if (gameState.speed === 1) gameState.speed = 2;
+            else if (gameState.speed === 2) gameState.speed = 4;
+            else gameState.speed = 1;
+            document.getElementById('speed-btn-txt').innerText = `x${gameState.speed}`;
+        }
+
+        function startNewGame() {
+            units = []; enemies = []; bullets = []; explosions = [];
+            gameState.money = 2000; gameState.score = 0;
+            gameState.selectedUnit = null; gameState.selectedBuild = null;
+            gameState.isPaused = false;
+            
+            units.push(new Unit(50.45, 30.52, 'zu23'));
+            
+            document.getElementById('main-menu').style.display = 'none';
+            initShopUI();
+            updateUI();
+        }
+
+        function openPauseMenu() { gameState.isPaused = true; document.getElementById('pause-menu').style.display = 'flex'; }
+        function resumeGame() { gameState.isPaused = false; document.getElementById('pause-menu').style.display = 'none'; }
+        function toMainMenu() { document.getElementById('pause-menu').style.display = 'none'; document.getElementById('main-menu').style.display = 'flex'; }
+
+        function saveGame() {
+            const data = { money: gameState.money, score: gameState.score, units: units.map(u => ({ lat: u.lat, lng: u.lng, type: u.type })) };
+            localStorage.setItem('pvo_save_v2', JSON.stringify(data));
+            alert('Игра сохранена!');
+        }
+
+        function loadGame() {
+            const data = localStorage.getItem('pvo_save_v2');
+            if (!data) return alert('Сохранений нет!');
+            const parsed = JSON.parse(data);
+            gameState.money = parsed.money; gameState.score = parsed.score;
+            units = parsed.units.map(u => new Unit(u.lat, u.lng, u.type));
+            enemies = []; bullets = []; explosions = [];
+            gameState.isPaused = false;
+            document.getElementById('main-menu').style.display = 'none';
+            initShopUI();
+            updateUI();
+        }
+
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>
