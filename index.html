@@ -3,7 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ПВО Украины: Воздушный Щит</title>
+    <title>SkyGuard: Interceptor</title>
+    
+    <!-- PWA & Mobile Fullscreen Tags -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0b0f19">
+
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
@@ -84,7 +91,7 @@
     <div id="error-toast">Размещение запрещено вне границ или в море!</div>
 
     <div id="main-menu" class="modal">
-        <h1>ПВО Украины</h1>
+        <h1>SkyGuard: Interceptor</h1>
         <p style="color: #94a3b8; font-size: 13px; text-align: center; max-width: 300px;">Защитите инфраструктуру от налета вражеских БПЛА и ракет.</p>
         <button class="btn" onclick="startNewGame()">Начать игру</button>
         <button class="btn" onclick="loadGame()">Загрузить</button>
@@ -101,41 +108,81 @@
     <script>
         const apiKey = 'cb1_3kmd_1_e4483342a33c98df984b7e40';
 
-        // Генерация картинки Шахеда в точности как на фотографии (встроенный SVG без внешних файлов)
-        const shahedImg = new Image();
-        shahedImg.src = 'data:image/svg+xml;utf8,' + encodeURIComponent(`
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="500" height="500">
-          <g transform="translate(250, 250)">
-            <!-- Крылья (треугольное дельта-крыло, матовый черный) -->
-            <path d="M 0 -220 L -210 180 L -180 180 L -140 160 L 0 160 L 140 160 L 180 180 L 210 180 Z" fill="#181a1c"/>
-            
-            <!-- Вертикальные шайбы (кили на кончиках крыльев) -->
-            <path d="M -210 180 L -220 220 L -205 220 L -195 180 Z" fill="#0d0e10"/>
-            <path d="M 210 180 L 220 220 L 205 220 L 195 180 Z" fill="#0d0e10"/>
+        // ИЗОБРАЖЕНИЯ ВСЕХ МОДЕЛЕЙ БПЛА И РАКЕТ (SVG IN JS)
+        const DRONE_MODELS = {};
 
-            <!-- Вытянутый фюзеляж с округлым носом -->
-            <path d="M 0 -235 C -25 -235, -30 -160, -30 -20 L -30 165 L 30 165 L 30 -20 C 30 -160, 25 -235, 0 -235 Z" fill="#202428"/>
-            <path d="M 0 -235 C -22 -235, -25 -170, -25 -100 L 25 -100 C 25 -170, 22 -235, 0 -235 Z" fill="#141618"/>
+        function loadDroneSprites() {
+            const svgData = {
+                // Shahed-136: Черный треугольник, толкающий винт, технологические люки
+                shahed: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500"><g transform="translate(250, 250)">
+                    <path d="M 0 -220 L -210 180 L -180 180 L -140 160 L 0 160 L 140 160 L 180 180 L 210 180 Z" fill="#181a1c"/>
+                    <path d="M -210 180 L -220 220 L -205 220 L -195 180 Z" fill="#0d0e10"/>
+                    <path d="M 210 180 L 220 220 L 205 220 L 195 180 Z" fill="#0d0e10"/>
+                    <path d="M 0 -235 C -25 -235, -30 -160, -30 -20 L -30 165 L 30 165 L 30 -20 C 30 -160, 25 -235, 0 -235 Z" fill="#202428"/>
+                    <rect x="-105" y="10" width="35" height="45" rx="3" fill="#272c32" stroke="#101214" stroke-width="1.5"/>
+                    <rect x="70" y="10" width="35" height="45" rx="3" fill="#272c32" stroke="#101214" stroke-width="1.5"/>
+                    <ellipse cx="0" cy="198" rx="85" ry="7" fill="#181a1c"/><circle cx="0" cy="198" r="6" fill="#424952"/>
+                </g></svg>`,
 
-            <!-- Технические прямоугольные лючки на крыльях -->
-            <rect x="-105" y="10" width="35" height="45" rx="3" fill="#272c32" stroke="#101214" stroke-width="1.5"/>
-            <rect x="70" y="10" width="35" height="45" rx="3" fill="#272c32" stroke="#101214" stroke-width="1.5"/>
-            <rect x="-150" y="100" width="22" height="22" rx="2" fill="#272c32" stroke="#101214" stroke-width="1.5"/>
-            <rect x="128" y="100" width="22" height="22" rx="2" fill="#272c32" stroke="#101214" stroke-width="1.5"/>
+                // Gerbera: Светло-серая пенопластовая текстура, тонкие крылья
+                gerbera: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500"><g transform="translate(250, 250)">
+                    <path d="M -180 10 L -180 -15 L 0 -40 L 180 -15 L 180 10 L 20 25 L -20 25 Z" fill="#d1d5db"/>
+                    <path d="M 0 -180 C -15 -180, -18 -80, -18 100 L 18 100 C 18 -80, 15 -180, 0 -180 Z" fill="#e5e7eb"/>
+                    <path d="M 0 -180 C -8 -180, -10 -100, -10 -30 L 10 -30 C 10 -100, 8 -180, 0 -180 Z" fill="#9ca3af"/>
+                    <ellipse cx="0" cy="110" rx="45" ry="5" fill="#374151"/><circle cx="0" cy="110" r="4" fill="#1f2937"/>
+                </g></svg>`,
 
-            <!-- Элевоны (рули высоты на задней кромке) -->
-            <rect x="-180" y="162" width="135" height="15" fill="#111315" stroke="#000" stroke-width="1"/>
-            <rect x="45" y="162" width="135" height="15" fill="#111315" stroke="#000" stroke-width="1"/>
+                // Lancet-3: X-образные двойные крылья, оптический шар спереди
+                lancet: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500"><g transform="translate(250, 250)">
+                    <path d="M -160 -120 L -20 -30 L 20 -30 L 160 -120 L 140 -140 L 0 -50 L -140 -140 Z" fill="#4b5563"/>
+                    <path d="M -160 120 L -20 30 L 20 30 L 160 120 L 140 140 L 0 50 L -140 140 Z" fill="#374151"/>
+                    <rect x="-14" y="-180" width="28" height="340" rx="14" fill="#6b7280"/>
+                    <circle cx="0" cy="-180" r="12" fill="#111827"/>
+                    <circle cx="0" cy="-182" r="5" fill="#38bdf8"/>
+                    <ellipse cx="0" cy="165" rx="35" ry="4" fill="#1f2937"/>
+                </g></svg>`,
 
-            <!-- Двигатель в хвосте -->
-            <rect x="-18" y="165" width="36" height="25" rx="3" fill="#30363d" stroke="#111315" stroke-width="2"/>
-            
-            <!-- Двухлопастной толкающий винт -->
-            <ellipse cx="0" cy="198" rx="85" ry="7" fill="#181a1c"/>
-            <circle cx="0" cy="198" r="6" fill="#424952"/>
-          </g>
-        </svg>
-        `);
+                // Orlan-10: Традиционный разведчик, тянущий винт спереди, серый корпус
+                orlan: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500"><g transform="translate(250, 250)">
+                    <path d="M -220 -10 L 0 -25 L 220 -10 L 210 15 L 0 5 L -210 15 Z" fill="#9ca3af"/>
+                    <path d="M 0 -160 C -14 -160, -16 -60, -16 120 L 16 120 C 16 -60, 14 -160, 0 -160 Z" fill="#d1d5db"/>
+                    <path d="M -50 120 L 0 100 L 50 120 L 40 145 L 0 135 L -40 145 Z" fill="#6b7280"/>
+                    <ellipse cx="0" cy="-165" rx="55" ry="6" fill="#111827"/>
+                    <circle cx="0" cy="-20" r="7" fill="#0284c7"/>
+                </g></svg>`,
+
+                // ZALA 421: Летающее крыло, светлый камуфляж
+                zala: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500"><g transform="translate(250, 250)">
+                    <path d="M 0 -130 L -190 80 L -150 110 L 0 50 L 150 110 L 190 80 Z" fill="#cbd5e1"/>
+                    <path d="M 0 -130 L -90 20 L 0 10 L 90 20 Z" fill="#94a3b8"/>
+                    <circle cx="0" cy="-60" r="10" fill="#0f172a"/>
+                </g></svg>`,
+
+                // Supercam: Большое крыло со скошенными винглетами
+                supercam: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500"><g transform="translate(250, 250)">
+                    <path d="M 0 -100 L -230 20 L -220 70 L 0 10 L 220 70 L 230 20 Z" fill="#f8fafc"/>
+                    <path d="M -230 20 L -240 -20 L -220 10 Z" fill="#e2e8f0"/>
+                    <path d="M 230 20 L 240 -20 L 220 10 Z" fill="#e2e8f0"/>
+                    <rect x="-12" y="-110" width="24" height="150" rx="12" fill="#cbd5e1"/>
+                </g></svg>`,
+
+                // Missile X-101: Длинная крылатая ракета с крыльями и соплом
+                missile: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500"><g transform="translate(250, 250)">
+                    <path d="M -140 20 L 0 -10 L 140 20 L 130 35 L 0 15 L -130 35 Z" fill="#334155"/>
+                    <path d="M 0 -220 C -12 -220, -14 -100, -14 170 L 14 170 C 14 -100, 12 -220, 0 -220 Z" fill="#1e293b"/>
+                    <path d="M 0 -220 C -6 -220, -8 -180, 0 -180 C 8 -180, 6 -220, 0 -220 Z" fill="#94a3b8"/>
+                    <path d="M -35 160 L 0 145 L 35 160 L 30 180 L 0 170 L -30 180 Z" fill="#0f172a"/>
+                    <ellipse cx="0" cy="175" rx="8" ry="4" fill="#ef4444"/>
+                </g></svg>`
+            };
+
+            for (let key in svgData) {
+                const img = new Image();
+                img.src = 'data:image/svg+xml;utf8,' + encodeURIComponent(svgData[key]);
+                DRONE_MODELS[key] = img;
+            }
+        }
+        loadDroneSprites();
 
         const map = L.map('map', {
             center: [48.5, 31.2],
@@ -191,13 +238,13 @@
         };
 
         const ENEMY_TYPES = {
-            shahed: { name: 'Шахед-136', speed: 2.1, hp: 35, maxHp: 35, reward: 120, key: 'shahed' },
-            gerbera: { name: 'Гербера', speed: 2.2, hp: 12, maxHp: 12, reward: 40, key: 'gerbera' },
-            orlan: { name: 'Орлан-10', speed: 2.0, hp: 18, maxHp: 18, reward: 60, key: 'orlan' },
-            zala: { name: 'ZALA 421', speed: 2.4, hp: 15, maxHp: 15, reward: 70, key: 'zala' },
-            supercam: { name: 'Supercam', speed: 2.6, hp: 20, maxHp: 20, reward: 85, key: 'supercam' },
-            lancet: { name: 'Ланцет', speed: 3.2, hp: 10, maxHp: 10, reward: 90, key: 'lancet' },
-            missile: { name: 'Ракета Х-101', speed: 5.5, hp: 55, maxHp: 55, reward: 300, key: 'missile' }
+            shahed: { name: 'Шахед-136', speed: 2.1, hp: 35, maxHp: 35, reward: 120, key: 'shahed', size: 36 },
+            gerbera: { name: 'Гербера', speed: 2.2, hp: 12, maxHp: 12, reward: 40, key: 'gerbera', size: 28 },
+            lancet: { name: 'Ланцет', speed: 3.2, hp: 10, maxHp: 10, reward: 90, key: 'lancet', size: 26 },
+            orlan: { name: 'Орлан-10', speed: 2.0, hp: 18, maxHp: 18, reward: 60, key: 'orlan', size: 30 },
+            zala: { name: 'ZALA 421', speed: 2.4, hp: 15, maxHp: 15, reward: 70, key: 'zala', size: 28 },
+            supercam: { name: 'Supercam', speed: 2.6, hp: 20, maxHp: 20, reward: 85, key: 'supercam', size: 32 },
+            missile: { name: 'Ракета Х-101', speed: 5.5, hp: 55, maxHp: 55, reward: 300, key: 'missile', size: 34 }
         };
 
         const spawnPoints = [
@@ -372,20 +419,17 @@
 
                 ctx.save();
                 ctx.translate(p.x, p.y);
-                
-                // Вращение по направлению полета
                 ctx.rotate(this.angle + Math.PI/2);
 
-                if (this.stats.key === 'shahed') {
-                    // Отрисовка точной фото-копии Шахеда без внешних файлов
-                    ctx.drawImage(shahedImg, -18, -18, 36, 36);
+                const sprite = DRONE_MODELS[this.stats.key];
+                const sz = this.stats.size;
+
+                if (sprite && sprite.complete) {
+                    ctx.drawImage(sprite, -sz/2, -sz/2, sz, sz);
                 } else {
-                    // Отрисовка стандартных оранжевых БПЛА
-                    ctx.fillStyle = '#f97316';
+                    ctx.fillStyle = '#ef4444';
                     ctx.beginPath();
-                    ctx.moveTo(0, -6);
-                    ctx.lineTo(5, 6);
-                    ctx.lineTo(-5, 6);
+                    ctx.arc(0, 0, 6, 0, Math.PI*2);
                     ctx.fill();
                 }
 
@@ -394,9 +438,9 @@
                 // Полоска здоровья
                 if (this.hp < this.stats.maxHp) {
                     ctx.fillStyle = 'rgba(0,0,0,0.8)';
-                    ctx.fillRect(p.x - 10, p.y - 14, 20, 3);
+                    ctx.fillRect(p.x - 12, p.y - 18, 24, 3);
                     ctx.fillStyle = '#22c55e';
-                    ctx.fillRect(p.x - 10, p.y - 14, (this.hp / this.stats.maxHp) * 20, 3);
+                    ctx.fillRect(p.x - 12, p.y - 18, (this.hp / this.stats.maxHp) * 24, 3);
                 }
             }
         }
@@ -524,7 +568,7 @@
                 const isInside = isPointInPolygon([e.latlng.lat, e.latlng.lng], ukraineBoundsPolygon);
                 
                 if (!isInside) {
-                    showToast('Нельзя ставить в море или за границей!');
+                    showToast('Размещение запрещено вне границ или в море!');
                     return;
                 }
 
@@ -570,7 +614,7 @@
 
             if (!gameState.isPaused) {
                 spawnTimer += dt;
-                if (spawnTimer >= 4.5 / gameState.speed) {
+                if (spawnTimer >= 4.0 / gameState.speed) {
                     const sp = spawnPoints[Math.floor(Math.random() * spawnPoints.length)];
                     enemies.push(new Enemy(sp));
                     spawnTimer = 0;
@@ -625,12 +669,12 @@
 
         function saveGame() {
             const data = { money: gameState.money, score: gameState.score, units: units.map(u => ({ lat: u.lat, lng: u.lng, type: u.type })) };
-            localStorage.setItem('pvo_save_v2', JSON.stringify(data));
+            localStorage.setItem('pvo_save_v3', JSON.stringify(data));
             alert('Игра сохранена!');
         }
 
         function loadGame() {
-            const data = localStorage.getItem('pvo_save_v2');
+            const data = localStorage.getItem('pvo_save_v3');
             if (!data) return alert('Сохранений нет!');
             const parsed = JSON.parse(data);
             gameState.money = parsed.money; gameState.score = parsed.score;
