@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Карта полётов и Мониторинг</title>
+    <title>Мониторинг Траекторий Полёта</title>
     <style>
         * {
             box-sizing: border-box;
@@ -13,9 +13,9 @@
         }
 
         body {
-            background-color: #080b10;
+            background-color: #05070a;
             color: #d1d5db;
-            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+            font-family: 'Segoe UI', system-ui, sans-serif;
             overflow: hidden;
             height: 100vh;
             width: 100vw;
@@ -35,7 +35,7 @@
             top: 20px;
             left: 20px;
             z-index: 10;
-            background: rgba(13, 17, 23, 0.85);
+            background: rgba(10, 14, 23, 0.85);
             backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.1);
             padding: 16px 24px;
@@ -82,7 +82,7 @@
             bottom: 20px;
             left: 20px;
             z-index: 10;
-            background: rgba(13, 17, 23, 0.85);
+            background: rgba(10, 14, 23, 0.85);
             backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.1);
             padding: 16px;
@@ -124,7 +124,7 @@
             top: 20px;
             right: 20px;
             z-index: 10;
-            background: rgba(13, 17, 23, 0.85);
+            background: rgba(10, 14, 23, 0.85);
             backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.1);
             padding: 16px 20px;
@@ -160,13 +160,13 @@
 <body>
 
     <div class="ui-header">
-        <h1>Система Мониторинга Полётов</h1>
-        <p>Плавные траектории • Залёты в города • Без тряски</p>
+        <h1>Движение по маршрутам</h1>
+        <p>Плавные закругления • Залёты в города • Без тряски</p>
     </div>
 
     <div class="stats-panel">
         <div class="stat-item">
-            <span class="stat-label">Всего городов:</span>
+            <span class="stat-label">Точек на карте:</span>
             <span class="stat-value" id="stat-cities">0</span>
         </div>
         <div class="stat-item">
@@ -174,15 +174,15 @@
             <span class="stat-value" id="stat-objects">0</span>
         </div>
         <div class="stat-item">
-            <span class="stat-label">Режим дуги:</span>
-            <span class="stat-value" style="color: #4ade80;">Плавный</span>
+            <span class="stat-label">Траектория:</span>
+            <span class="stat-value" style="color: #4ade80;">Плавный изгиб</span>
         </div>
     </div>
 
     <div class="controls-panel">
-        <button class="btn btn-primary" onclick="addAircraft()">+ Добавить объект</button>
-        <button class="btn" onclick="clearTrails()">Очистить следы</button>
-        <button class="btn" onclick="resetAll()">Перезапустить</button>
+        <button class="btn btn-primary" onclick="addAircraft()">+ Запустить объект</button>
+        <button class="btn" onclick="clearTrails()">Очистить шлейф</button>
+        <button class="btn" onclick="resetAll()">Сброс</button>
     </div>
 
     <canvas id="canvas"></canvas>
@@ -201,6 +201,7 @@
 
         let cities = [];
 
+        // Список городов
         const cityData = [
             { name: "Киев", rx: 0.48, ry: 0.32 },
             { name: "Харьков", rx: 0.78, ry: 0.35 },
@@ -231,7 +232,8 @@
             cities = cityData.map(c => ({
                 name: c.name,
                 x: c.rx * width,
-                y: c.ry * height
+                y: c.ry * height,
+                pulse: Math.random() * Math.PI * 2
             }));
             document.getElementById('stat-cities').innerText = cities.length;
         }
@@ -251,16 +253,16 @@
                 const initialDy = this.route[1].y - this.y;
                 this.angle = Math.atan2(initialDy, initialDx);
 
-                this.speed = 2.2 + Math.random() * 0.8;
-                this.turnSpeed = 0.035; 
+                this.speed = 2.0 + Math.random() * 0.8; 
+                this.turnSpeed = 0.03; // Очень плавная дуга при повороте
                 
                 this.history = [];
-                this.maxHistory = 120;
+                this.maxHistory = 100;
             }
 
             generateLongRoute() {
                 let shuffled = [...cities].sort(() => Math.random() - 0.5);
-                return shuffled.slice(0, 8 + Math.floor(Math.random() * 5));
+                return shuffled.slice(0, 6 + Math.floor(Math.random() * 6));
             }
 
             update() {
@@ -277,11 +279,14 @@
 
                 let diff = targetAngle - this.angle;
 
+                // Приведение угла к пределу -PI .. PI
                 while (diff < -Math.PI) diff += Math.PI * 2;
                 while (diff > Math.PI) diff -= Math.PI * 2;
 
+                // Плавное изменение направления
                 this.angle += diff * this.turnSpeed;
 
+                // Движение вперед без сдвига в стороны (без тряски)
                 this.x += Math.cos(this.angle) * this.speed;
                 this.y += Math.sin(this.angle) * this.speed;
 
@@ -291,12 +296,13 @@
                 }
 
                 const distanceToTarget = Math.hypot(dx, dy);
-                if (distanceToTarget < 35) {
+                if (distanceToTarget < 40) {
                     this.targetIndex++;
                 }
             }
 
             draw() {
+                // Шлейф
                 if (this.history.length > 1) {
                     ctx.beginPath();
                     ctx.moveTo(this.history[0].x, this.history[0].y);
@@ -306,28 +312,29 @@
                     }
 
                     ctx.strokeStyle = this.color;
-                    ctx.lineWidth = 2.5;
+                    ctx.lineWidth = 2;
                     ctx.lineCap = 'round';
                     ctx.lineJoin = 'round';
                     ctx.shadowColor = this.color;
-                    ctx.shadowBlur = 10;
+                    ctx.shadowBlur = 8;
                     ctx.stroke();
                     ctx.shadowBlur = 0;
                 }
 
+                // Сам летящий объект
                 ctx.save();
                 ctx.translate(this.x, this.y);
                 ctx.rotate(this.angle);
 
                 ctx.fillStyle = '#ffffff';
                 ctx.shadowColor = this.color;
-                ctx.shadowBlur = 12;
+                ctx.shadowBlur = 10;
 
                 ctx.beginPath();
-                ctx.moveTo(10, 0);
-                ctx.lineTo(-8, -6);
-                ctx.lineTo(-4, 0);
-                ctx.lineTo(-8, 6);
+                ctx.moveTo(8, 0);
+                ctx.lineTo(-6, -5);
+                ctx.lineTo(-3, 0);
+                ctx.lineTo(-6, 5);
                 ctx.closePath();
                 ctx.fill();
 
@@ -340,7 +347,7 @@
 
         function initAircrafts() {
             aircrafts = [];
-            for (let i = 0; i < 4; i++) {
+            for (let i = 0; i < 3; i++) {
                 aircrafts.push(new Aircraft(i + 1, colors[i % colors.length]));
             }
             document.getElementById('stat-objects').innerText = aircrafts.length;
@@ -363,9 +370,12 @@
 
         function drawMap() {
             cities.forEach(city => {
-                ctx.fillStyle = 'rgba(56, 189, 248, 0.4)';
+                city.pulse += 0.03;
+                const pSize = Math.sin(city.pulse) * 1.5;
+
+                ctx.fillStyle = 'rgba(56, 189, 248, 0.2)';
                 ctx.beginPath();
-                ctx.arc(city.x, city.y, 6, 0, Math.PI * 2);
+                ctx.arc(city.x, city.y, 6 + pSize, 0, Math.PI * 2);
                 ctx.fill();
 
                 ctx.fillStyle = '#38bdf8';
@@ -373,14 +383,14 @@
                 ctx.arc(city.x, city.y, 2.5, 0, Math.PI * 2);
                 ctx.fill();
 
-                ctx.fillStyle = 'rgba(209, 213, 219, 0.7)';
+                ctx.fillStyle = 'rgba(209, 213, 219, 0.6)';
                 ctx.font = '11px "Segoe UI", sans-serif';
-                ctx.fillText(city.name, city.x + 10, city.y + 4);
+                ctx.fillText(city.name, city.x + 8, city.y + 4);
             });
         }
 
         function animate() {
-            ctx.fillStyle = 'rgba(8, 11, 16, 0.25)';
+            ctx.fillStyle = 'rgba(5, 7, 10, 0.25)';
             ctx.fillRect(0, 0, width, height);
 
             drawMap();
