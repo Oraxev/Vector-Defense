@@ -18,7 +18,6 @@
         #map { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 1; filter: brightness(0.7) contrast(1.2); }
         #gameCanvas { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 2; pointer-events: none; }
         
-        /* СТИЛЬНЫЙ ОРАНЖЕВЫЙ МИЛИТАРИ HUD ИНТЕРФЕЙС */
         #top-bar { position: absolute; top: 12px; left: 12px; z-index: 10; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
         .stat-card { 
             background: linear-gradient(135deg, rgba(20, 15, 10, 0.92), rgba(30, 20, 10, 0.85)); 
@@ -81,10 +80,11 @@
             gap: 3px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.4);
         }
-        .shop-item:hover, .shop-item.active { border-color: #f97316; background: rgba(249, 115, 22, 0.15); box-shadow: 0 0 12px rgba(249, 115, 22, 0.4); }
-        .shop-item:disabled { opacity: 0.35; cursor: not-allowed; border-color: #334155 !important; box-shadow: none; }
+        .shop-item:hover:not(:disabled), .shop-item.active { border-color: #f97316; background: rgba(249, 115, 22, 0.15); box-shadow: 0 0 12px rgba(249, 115, 22, 0.4); }
+        .shop-item:disabled { opacity: 0.35; cursor: not-allowed; border-color: #334155 !important; box-shadow: none; background: rgba(15, 23, 42, 0.5); }
         .shop-item .name { font-size: 11px; font-weight: 800; color: #ffedd5; }
         .shop-item .price { font-size: 11px; color: #facc15; font-weight: bold; }
+        .shop-item:disabled .price { color: #ef4444; }
         .shop-item .desc { font-size: 9px; color: #94a3b8; }
 
         #unit-action-panel {
@@ -295,14 +295,13 @@
             document.getElementById('btn-menu').innerText = t.menu;
 
             initShopUI();
+            updateShopAvailability();
         }
 
-        // МОДЕЛИ ТЕХНИКИ И БПЛА (SVG В КОДЕ)
         const SPRITES = {};
 
         function loadSprites() {
             const svgData = {
-                // ВРАГИ
                 shahed: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500"><g transform="translate(250, 250)">
                     <path d="M 0 -220 L -210 180 L -180 180 L -140 160 L 0 160 L 140 160 L 180 180 L 210 180 Z" fill="#181a1c"/>
                     <path d="M 0 -235 C -25 -235, -30 -160, -30 -20 L -30 165 L 30 165 L 30 -20 Z" fill="#202428"/>
@@ -330,8 +329,6 @@
                     <path d="M -140 20 L 0 -10 L 140 20 Z" fill="#334155"/>
                     <path d="M -14 -220 L 14 -220 L 14 170 L -14 170 Z" fill="#1e293b"/>
                 </g></svg>`,
-
-                // ТЕХНИКА ПВО (ЮНИТЫ)
                 fpv_sprite: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><g transform="translate(100,100)">
                     <line x1="-60" y1="-60" x2="60" y2="60" stroke="#f97316" stroke-width="12"/>
                     <line x1="60" y1="-60" x2="-60" y2="60" stroke="#f97316" stroke-width="12"/>
@@ -342,27 +339,23 @@
                     <rect x="-25" y="-35" width="50" height="70" rx="10" fill="#0f172a" stroke="#f97316" stroke-width="5"/>
                     <circle cx="0" cy="-35" r="12" fill="#38bdf8"/>
                 </g></svg>`,
-
                 pickup_sprite: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300"><g transform="translate(150,150)">
                     <rect x="-50" y="-100" width="100" height="200" rx="15" fill="#334155"/>
                     <rect x="-42" y="-90" width="84" height="60" fill="#1e293b"/>
                     <circle cx="0" cy="30" r="28" fill="#f97316"/>
                     <line x1="0" y1="30" x2="0" y2="-70" stroke="#000" stroke-width="12"/>
                 </g></svg>`,
-
                 zu23_sprite: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300"><g transform="translate(150,150)">
                     <circle cx="0" cy="0" r="70" fill="#475569" stroke="#f97316" stroke-width="8"/>
                     <line x1="-18" y1="20" x2="-18" y2="-120" stroke="#0f172a" stroke-width="14"/>
                     <line x1="18" y1="20" x2="18" y2="-120" stroke="#0f172a" stroke-width="14"/>
                 </g></svg>`,
-
                 gepard_sprite: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300"><g transform="translate(150,150)">
                     <rect x="-65" y="-110" width="130" height="220" rx="20" fill="#1e293b" stroke="#475569" stroke-width="6"/>
                     <circle cx="0" cy="0" r="50" fill="#334155"/>
                     <line x1="-60" y1="0" x2="-60" y2="-130" stroke="#f97316" stroke-width="12"/>
                     <line x1="60" y1="0" x2="60" y2="-130" stroke="#f97316" stroke-width="12"/>
                 </g></svg>`,
-
                 buk_sprite: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300"><g transform="translate(150,150)">
                     <rect x="-70" y="-120" width="140" height="240" rx="15" fill="#1e293b"/>
                     <rect x="-45" y="-90" width="18" height="150" fill="#f8fafc" stroke="#dc2626" stroke-width="3"/>
@@ -370,12 +363,10 @@
                     <rect x="15" y="-90" width="18" height="150" fill="#f8fafc" stroke="#dc2626" stroke-width="3"/>
                     <rect x="45" y="-90" width="18" height="150" fill="#f8fafc" stroke="#dc2626" stroke-width="3"/>
                 </g></svg>`,
-
                 patriot_sprite: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300"><g transform="translate(150,150)">
                     <rect x="-75" y="-130" width="150" height="260" rx="10" fill="#334155"/>
                     <rect x="-60" y="-100" width="120" height="180" fill="#0f172a" stroke="#f97316" stroke-width="5"/>
                 </g></svg>`,
-
                 mig29_sprite: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300"><g transform="translate(150,150)">
                     <path d="M 0 -140 L -120 80 L -60 120 L 0 80 L 60 120 L 120 80 Z" fill="#38bdf8"/>
                 </g></svg>`
@@ -605,21 +596,16 @@
                 const target = this.route[this.targetIdx];
                 const dLat = target.lat - this.lat;
                 const dLng = target.lng - this.lng;
-                const targetAngle = Math.atan2(dLat, dLng);
+                
+                // ПРЯМОЕ ДВИЖЕНИЕ К ЦЕЛИ (БЕЗ ОГРОМНЫХ РАДИУСОВ ПОВОРОТА)
+                this.angle = Math.atan2(dLat, dLng);
 
-                // Плавная интерполяция разворота по дуге (БЕЗ ТРЯСКИ!)
-                let diff = targetAngle - this.angle;
-                while (diff < -Math.PI) diff += Math.PI * 2;
-                while (diff > Math.PI) diff -= Math.PI * 2;
-
-                this.angle += diff * 0.03;
-
-                // Движение вперед
-                this.lat += Math.sin(this.angle + Math.PI/2) * (this.stats.speed * 0.005);
-                this.lng += Math.cos(this.angle + Math.PI/2) * (this.stats.speed * 0.005);
+                const moveSpeed = this.stats.speed * 0.005;
+                this.lat += Math.sin(this.angle + Math.PI/2) * moveSpeed;
+                this.lng += Math.cos(this.angle + Math.PI/2) * moveSpeed;
 
                 this.trail.push([this.lat, this.lng]);
-                if (this.trail.length > 25) this.trail.shift();
+                if (this.trail.length > 20) this.trail.shift();
 
                 const dist = Math.hypot(dLat, dLng);
                 if (dist < 0.2) this.targetIdx++;
@@ -649,7 +635,6 @@
                 if (img) ctx.drawImage(img, -this.stats.size/2, -this.stats.size/2, this.stats.size, this.stats.size);
                 ctx.restore();
 
-                // Полоска ХП
                 if (this.hp < this.stats.maxHp) {
                     ctx.fillStyle = 'rgba(0,0,0,0.6)';
                     ctx.fillRect(p.x - 15, p.y - this.stats.size - 6, 30, 4);
@@ -715,7 +700,6 @@
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             if (!gameState.isPaused) {
-                // Шанс спавна врагов
                 if (Math.random() < 0.02 * gameState.speed) {
                     const keys = Object.keys(ENEMY_TYPES);
                     enemies.push(new Enemy(keys[Math.floor(Math.random() * keys.length)]));
@@ -725,7 +709,6 @@
                 enemies = enemies.filter(e => e.update(dt));
                 bullets = bullets.filter(b => b.update(dt));
 
-                // Отрисовка взрывов
                 for (let i = explosions.length - 1; i >= 0; i--) {
                     let ex = explosions[i];
                     ex.radius += dt * 40;
@@ -754,6 +737,7 @@
                 const u = UNIT_TYPES[key];
                 const item = document.createElement('button');
                 item.className = 'shop-item';
+                item.id = `shop-btn-${key}`;
                 item.onclick = () => selectBuild(key);
                 item.innerHTML = `
                     <div class="name">${t[key]?.name || key}</div>
@@ -764,16 +748,31 @@
             }
         }
 
+        function updateShopAvailability() {
+            for (let key in UNIT_TYPES) {
+                const btn = document.getElementById(`shop-btn-${key}`);
+                if (btn) {
+                    if (gameState.money < UNIT_TYPES[key].cost) {
+                        btn.disabled = true;
+                        if (gameState.selectedBuild === key) gameState.selectedBuild = null;
+                    } else {
+                        btn.disabled = false;
+                    }
+                }
+            }
+        }
+
         function selectBuild(key) {
-            gameState.selectedBuild = key;
-            gameState.selectedUnit = null;
-            document.getElementById('unit-action-panel').style.display = 'none';
+            if (gameState.money >= UNIT_TYPES[key].cost) {
+                gameState.selectedBuild = key;
+                gameState.selectedUnit = null;
+                document.getElementById('unit-action-panel').style.display = 'none';
+            }
         }
 
         map.on('click', (e) => {
             if (gameState.isPaused) return;
 
-            // Клик по карте для постройки или перемещения
             if (gameState.selectedBuild) {
                 const cost = UNIT_TYPES[gameState.selectedBuild].cost;
                 if (gameState.money >= cost) {
@@ -791,7 +790,6 @@
                 gameState.selectedUnit.targetLng = e.latlng.lng;
                 gameState.selectedUnit.isMoving = true;
             } else {
-                // Выбор юнита
                 let clicked = null;
                 const clickPos = L.latLng(e.latlng.lat, e.latlng.lng);
                 units.forEach(u => {
@@ -831,11 +829,11 @@
             document.getElementById('money-display').innerText = gameState.money;
             document.getElementById('score-display').innerText = gameState.score;
             document.getElementById('spawned-display').innerText = gameState.spawnedCount;
+            updateShopAvailability();
         }
 
         function toggleSpeed() {
             if (gameState.speed === 1) gameState.speed = 2;
-            else if (gameState.speed === 2) gameState.speed = 4;
             else gameState.speed = 1;
             document.getElementById('speed-btn-txt').innerText = `x${gameState.speed}`;
         }
@@ -883,7 +881,6 @@
             }
         }
 
-        // Инициализация
         changeLanguage('uk');
         requestAnimationFrame(gameLoop);
     </script>
