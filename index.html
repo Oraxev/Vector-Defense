@@ -1,412 +1,891 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Мониторинг Траекторий Полёта</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SkyGuard: Interceptor</title>
+    
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0b0f19">
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            user-select: none;
-        }
-
-        body {
-            background-color: #05070a;
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+        body, html { width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #080c14; color: #fff; }
+        
+        #map { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 1; filter: brightness(0.7) contrast(1.2); }
+        #gameCanvas { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 2; pointer-events: none; }
+        
+        /* СТИЛЬНЫЙ ОРАНЖЕВЫЙ МИЛИТАРИ HUD ИНТЕРФЕЙС */
+        #top-bar { position: absolute; top: 12px; left: 12px; z-index: 10; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .stat-card { 
+            background: linear-gradient(135deg, rgba(20, 15, 10, 0.92), rgba(30, 20, 10, 0.85)); 
+            border: 1px solid rgba(249, 115, 22, 0.4); 
+            padding: 6px 14px; 
+            border-radius: 8px; 
+            backdrop-filter: blur(10px); 
+            font-size: 13px; 
+            font-weight: 700; 
             color: #d1d5db;
-            font-family: 'Segoe UI', system-ui, sans-serif;
-            overflow: hidden;
-            height: 100vh;
-            width: 100vw;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5), inset 0 0 10px rgba(249, 115, 22, 0.1);
         }
-
-        #canvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 1;
+        .stat-card span { color: #38bdf8; }
+        .stat-card.money span { color: #facc15; }
+        .stat-card.orange span { color: #f97316; }
+        
+        #top-controls { position: absolute; top: 12px; right: 12px; z-index: 10; display: flex; gap: 8px; }
+        .ctrl-btn { 
+            background: linear-gradient(135deg, rgba(249, 115, 22, 0.2), rgba(180, 83, 9, 0.3)); 
+            border: 1px solid #f97316; 
+            color: #ffedd5; 
+            padding: 8px 14px; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            font-weight: bold; 
+            font-size: 12px; 
+            backdrop-filter: blur(10px);
+            box-shadow: 0 0 10px rgba(249, 115, 22, 0.2);
+            transition: all 0.2s;
         }
+        .ctrl-btn:active { transform: scale(0.95); background: rgba(249, 115, 22, 0.4); }
 
-        .ui-header {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            z-index: 10;
-            background: rgba(10, 14, 23, 0.85);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 16px 24px;
-            border-radius: 12px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        #sidebar-shop { 
+            position: absolute; 
+            top: 90px; 
+            left: 12px; 
+            bottom: 20px; 
+            width: 165px; 
+            z-index: 10; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 8px; 
+            overflow-y: auto; 
+            padding-right: 4px;
+            -webkit-overflow-scrolling: touch;
         }
+        #sidebar-shop::-webkit-scrollbar { width: 4px; }
+        #sidebar-shop::-webkit-scrollbar-thumb { background: #f97316; border-radius: 4px; }
 
-        .ui-header h1 {
-            font-size: 18px;
-            font-weight: 700;
-            color: #f3f4f6;
-            letter-spacing: 1px;
-            text-transform: uppercase;
+        .shop-item { 
+            background: linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(24, 15, 10, 0.9)); 
+            border: 1px solid rgba(249, 115, 22, 0.25); 
+            border-radius: 10px; 
+            padding: 9px; 
+            cursor: pointer; 
+            transition: all 0.2s ease;
+            backdrop-filter: blur(8px);
             display: flex;
-            align-items: center;
-            gap: 10px;
+            flex-direction: column;
+            gap: 3px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
         }
+        .shop-item:hover, .shop-item.active { border-color: #f97316; background: rgba(249, 115, 22, 0.15); box-shadow: 0 0 12px rgba(249, 115, 22, 0.4); }
+        .shop-item:disabled { opacity: 0.35; cursor: not-allowed; border-color: #334155 !important; box-shadow: none; }
+        .shop-item .name { font-size: 11px; font-weight: 800; color: #ffedd5; }
+        .shop-item .price { font-size: 11px; color: #facc15; font-weight: bold; }
+        .shop-item .desc { font-size: 9px; color: #94a3b8; }
 
-        .ui-header h1::before {
-            content: '';
-            display: inline-block;
-            width: 10px;
-            height: 10px;
-            background: #22c55e;
-            border-radius: 50%;
-            box-shadow: 0 0 10px #22c55e;
-            animation: pulse 1.5s infinite;
-        }
-
-        @keyframes pulse {
-            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
-            70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(34, 197, 94, 0); }
-            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
-        }
-
-        .ui-header p {
-            font-size: 12px;
-            color: #9ca3af;
-            margin-top: 4px;
-        }
-
-        .controls-panel {
+        #unit-action-panel {
             position: absolute;
             bottom: 20px;
-            left: 20px;
-            z-index: 10;
-            background: rgba(10, 14, 23, 0.85);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 16px;
-            border-radius: 12px;
-            display: flex;
-            gap: 12px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-        }
-
-        .btn {
-            background: #1f2937;
-            color: #f3f4f6;
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            padding: 10px 18px;
-            border-radius: 8px;
-            font-size: 13px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-
-        .btn:hover {
-            background: #374151;
-            border-color: rgba(255, 255, 255, 0.3);
-            transform: translateY(-2px);
-        }
-
-        .btn-primary {
-            background: #2563eb;
-            border-color: #3b82f6;
-        }
-
-        .btn-primary:hover {
-            background: #1d4ed8;
-        }
-
-        .stats-panel {
-            position: absolute;
-            top: 20px;
             right: 20px;
             z-index: 10;
-            background: rgba(10, 14, 23, 0.85);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 16px 20px;
+            background: linear-gradient(135deg, rgba(20, 15, 10, 0.95), rgba(40, 20, 10, 0.9));
+            border: 1px solid #f97316;
             border-radius: 12px;
-            min-width: 220px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            padding: 12px 18px;
+            display: none;
+            flex-direction: column;
+            gap: 8px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 0 20px rgba(249, 115, 22, 0.3);
+        }
+        #unit-action-panel .title { font-size: 13px; font-weight: bold; color: #ea580c; }
+        .btn-sell {
+            background: linear-gradient(135deg, #dc2626, #991b1b);
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            font-size: 12px;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            box-shadow: 0 0 8px rgba(220, 38, 38, 0.4);
         }
 
-        .stat-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 6px 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-            font-size: 13px;
-        }
+        .modal { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 100; background: rgba(8, 12, 20, 0.95); display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 16px; padding: 20px; }
+        .modal h1 { font-size: 30px; color: #f97316; text-transform: uppercase; letter-spacing: 2px; text-align: center; text-shadow: 0 0 15px rgba(249, 115, 22, 0.6); }
+        .btn { background: linear-gradient(135deg, #ea580c, #c2410c); color: white; border: none; padding: 14px 28px; font-size: 15px; font-weight: bold; border-radius: 10px; cursor: pointer; min-width: 210px; text-align: center; box-shadow: 0 4px 15px rgba(234, 88, 12, 0.4); }
+        .btn:active { transform: scale(0.97); }
+        .btn-danger { background: linear-gradient(135deg, #dc2626, #991b1b); box-shadow: 0 4px 15px rgba(220, 38, 38, 0.4); }
 
-        .stat-item:last-child {
-            border-bottom: none;
-        }
+        .lang-select-box { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-bottom: 8px; }
+        .lang-select-box label { font-size: 12px; color: #94a3b8; font-weight: bold; }
+        .lang-select-box select { background: #1e293b; color: #ffedd5; border: 1px solid #f97316; padding: 8px 16px; border-radius: 8px; font-size: 14px; font-weight: bold; outline: none; }
 
-        .stat-label {
-            color: #9ca3af;
-        }
-
-        .stat-value {
-            font-weight: 700;
-            color: #38bdf8;
-            font-family: monospace;
-        }
+        #error-toast { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 20; background: rgba(220, 38, 38, 0.95); color: white; padding: 8px 18px; border-radius: 20px; font-size: 12px; font-weight: bold; display: none; pointer-events: none; box-shadow: 0 0 12px rgba(220, 38, 38, 0.5); }
     </style>
 </head>
 <body>
 
-    <div class="ui-header">
-        <h1>Движение по маршрутам</h1>
-        <p>Плавные закругления • Залёты в города • Без тряски</p>
+    <div id="map"></div>
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="top-bar">
+        <div class="stat-card money"><span id="lbl-budget">Бюджет</span>: $<span id="money-display">2000</span></div>
+        <div class="stat-card orange"><span id="lbl-score">Збито</span>: <span id="score-display">0</span></div>
+        <div class="stat-card"><span id="lbl-spawned">Прилетіли</span>: <span id="spawned-display">0</span></div>
     </div>
 
-    <div class="stats-panel">
-        <div class="stat-item">
-            <span class="stat-label">Точек на карте:</span>
-            <span class="stat-value" id="stat-cities">0</span>
-        </div>
-        <div class="stat-item">
-            <span class="stat-label">Объектов в воздухе:</span>
-            <span class="stat-value" id="stat-objects">0</span>
-        </div>
-        <div class="stat-item">
-            <span class="stat-label">Траектория:</span>
-            <span class="stat-value" style="color: #4ade80;">Плавный изгиб</span>
-        </div>
+    <div id="top-controls">
+        <button class="ctrl-btn" onclick="toggleSpeed()"><span id="lbl-speed">Прискорення</span>: <span id="speed-btn-txt">x1</span></button>
+        <button class="ctrl-btn" onclick="openPauseMenu()">⚙️</button>
     </div>
 
-    <div class="controls-panel">
-        <button class="btn btn-primary" onclick="addAircraft()">+ Запустить объект</button>
-        <button class="btn" onclick="clearTrails()">Очистить шлейф</button>
-        <button class="btn" onclick="resetAll()">Сброс</button>
+    <div id="sidebar-shop"></div>
+    <div id="unit-action-panel">
+        <div class="title" id="action-unit-name">Юніт ППО</div>
+        <button class="btn-sell" onclick="sellSelectedUnit()">Продати за $<span id="sell-price-val">0</span></button>
     </div>
 
-    <canvas id="canvas"></canvas>
+    <div id="error-toast"></div>
 
+    <div id="main-menu" class="modal">
+        <h1>SkyGuard: Interceptor</h1>
+        <p id="lbl-subtitle" style="color: #94a3b8; font-size: 13px; text-align: center; max-width: 320px;">Захистіть інфраструктуру від нальоту ворожих БПЛА та ракет.</p>
+        
+        <div class="lang-select-box">
+            <label id="lbl-lang">Мова / Language</label>
+            <select id="lang-selector" onchange="changeLanguage(this.value)">
+                <option value="uk">Українська</option>
+                <option value="en">English</option>
+                <option value="ru">Русский</option>
+                <option value="pl">Polski</option>
+                <option value="es">Español</option>
+                <option value="kk">Қазақша</option>
+            </select>
+        </div>
+
+        <button class="btn" id="btn-start" onclick="startNewGame()">Почати гру</button>
+        <button class="btn" id="btn-load" onclick="loadGame()">Завантажити</button>
+    </div>
+
+    <div id="pause-menu" class="modal" style="display: none;">
+        <h1 id="lbl-pause">Пауза</h1>
+        <button class="btn" id="btn-resume" onclick="resumeGame()">Продовжити</button>
+        <button class="btn" id="btn-save" onclick="saveGame()">Зберегти</button>
+        <button class="btn btn-danger" id="btn-menu" onclick="toMainMenu()">В меню</button>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        const canvas = document.getElementById('canvas');
+        const apiKey = 'cb1_3kmd_1_e4483342a33c98df984b7e40';
+
+        const TRANSLATIONS = {
+            uk: {
+                budget: "Бюджет", score: "Збито", spawned: "Прилетіло", speed: "Прискорення",
+                subtitle: "Захистіть інфраструктуру від нальоту ворожих БПЛА та ракет.",
+                start: "Почати гру", load: "Завантажити", pause: "Пауза", resume: "Продовжити", save: "Зберегти", menu: "В меню",
+                toastErr: "Розміщення заборонено поза межами або в морі!",
+                units: {
+                    fpv: { name: 'FPV Wild Hornet', desc: 'Перехоплювач (підрив при тарані)' },
+                    mg_pickup: { name: 'Пікап з ДШК', desc: 'Мобільна група ППО' },
+                    zu23: { name: 'ЗУ-23-2', desc: 'Спарена зенітна установка' },
+                    gepard: { name: 'ЗСУ Gepard', desc: 'Скорострільна зенітка' },
+                    buk: { name: 'ЗРК Бук-М1', desc: 'Середній ракетний комплекс' },
+                    patriot: { name: 'ЗРК Patriot', desc: 'Важке далекобійне ППО' },
+                    mig29: { name: 'МіГ-29', desc: 'Швидкий винищувач' }
+                }
+            },
+            en: {
+                budget: "Budget", score: "Intercepted", spawned: "Inbound", speed: "Speed",
+                subtitle: "Protect infrastructure from enemy UAVs and missile strikes.",
+                start: "New Game", load: "Load Game", pause: "Pause", resume: "Resume", save: "Save Game", menu: "Main Menu",
+                toastErr: "Placement forbidden outside borders or in the sea!",
+                units: {
+                    fpv: { name: 'FPV Wild Hornet', desc: 'Interceptor (RAM & Explode)' },
+                    mg_pickup: { name: 'AA Pickup Truck', desc: 'Mobile air defense team' },
+                    zu23: { name: 'ZU-23-2 AA', desc: 'Twin anti-aircraft gun' },
+                    gepard: { name: 'Gepard SPAAG', desc: 'Rapid-fire AA cannon' },
+                    buk: { name: 'Buk-M1 SAM', desc: 'Medium-range SAM system' },
+                    patriot: { name: 'Patriot SAM', desc: 'Long-range air defense' },
+                    mig29: { name: 'MiG-29 Jet', desc: 'Fast interceptor aircraft' }
+                }
+            },
+            ru: {
+                budget: "Бюджет", score: "Сбито", spawned: "Прилетело", speed: "Ускорение",
+                subtitle: "Защитите инфраструктуру от налета вражеских БПЛА и ракет.",
+                start: "Начать игру", load: "Загрузить", pause: "Пауза", resume: "Продолжить", save: "Сохранить", menu: "В меню",
+                toastErr: "Размещение запрещено вне границ или в море!",
+                units: {
+                    fpv: { name: 'FPV Wild Hornet', desc: 'Перехватчик (подрыв при таране)' },
+                    mg_pickup: { name: 'Пикап с ДШК', desc: 'Мобильная группа ПВО' },
+                    zu23: { name: 'ЗУ-23-2', desc: 'Спаренная зенитная установка' },
+                    gepard: { name: 'ЗСУ Gepard', desc: 'Скорострельная зенитка' },
+                    buk: { name: 'ЗРК Бук-М1', desc: 'Средний ракетный комплекс' },
+                    patriot: { name: 'ЗРК Patriot', desc: 'Тяжелое дальнобойное ПВО' },
+                    mig29: { name: 'МиГ-29', desc: 'Быстрый перехватчик' }
+                }
+            },
+            pl: {
+                budget: "Budżet", score: "Zestrzelone", spawned: "Nadlatujące", speed: "Prędkość",
+                subtitle: "Chroń infrastrukturę przed nalotami wrogich dronów i rakiet.",
+                start: "Nowa gra", load: "Wczytaj", pause: "Pauza", resume: "Kontynuuj", save: "Zapisz", menu: "Menu główne",
+                toastErr: "Umieszczanie poza granicami lub na morzu jest zabronione!",
+                units: {
+                    fpv: { name: 'FPV Wild Hornet', desc: 'Przechwytywacz (taran i wybuch)' },
+                    mg_pickup: { name: 'Pickup z WKM', desc: 'Mobilna grupa OPL' },
+                    zu23: { name: 'ZU-23-2', desc: 'Podwójna armata przeciwlotnicza' },
+                    gepard: { name: 'Działo Gepard', desc: 'Szybkostrzelny zestaw OPL' },
+                    buk: { name: 'Buk-M1 SAM', desc: 'Średni zestaw rakietowy' },
+                    patriot: { name: 'Patriot SAM', desc: 'Ciężki zestaw dalekiego zasięgu' },
+                    mig29: { name: 'MiG-29', desc: 'Szybki myśliwiec przechwytujący' }
+                }
+            },
+            es: {
+                budget: "Presupuesto", score: "Derribados", spawned: "Entrantes", speed: "Velocidad",
+                subtitle: "Protege la infraestructura de ataques con drones y misiles enemigos.",
+                start: "Nueva partida", load: "Cargar", pause: "Pausa", resume: "Continuar", save: "Guardar", menu: "Menú principal",
+                toastErr: "¡Ubicación no permitida fuera de las fronteras o en el mar!",
+                units: {
+                    fpv: { name: 'FPV Wild Hornet', desc: 'Interceptador (embestida y взрыв)' },
+                    mg_pickup: { name: 'Pick-up Antiaéreo', desc: 'Equipo móvil de defensa' },
+                    zu23: { name: 'ZU-23-2', desc: 'Cañón antiaéreo doble' },
+                    gepard: { name: 'Gepard SPAAG', desc: 'Cañón antiaéreo de tiro rápido' },
+                    buk: { name: 'Buk-M1 SAM', desc: 'Sistema de misiles de medio alcance' },
+                    patriot: { name: 'Patriot SAM', desc: 'Defensa aérea de largo alcance' },
+                    mig29: { name: 'MiG-29', desc: 'Caza interceptor rápido' }
+                }
+            },
+            kk: {
+                budget: "Бюджет", score: "Атып түсірілді", spawned: "Уақыты", speed: "Жылдамдық",
+                subtitle: "Инфрақұрылымды жау дрондары мен ракеталық шабуылдардан қорғаңыз.",
+                start: "Жаңа ойын", load: "Жүктеу", pause: "Кідіріс", resume: "Жалғастыру", save: "Сақтау", menu: "Мәзірге",
+                toastErr: "Шекарадан тыс немесе теңізге орналастыруға тыйым салынады!",
+                units: {
+                    fpv: { name: 'FPV Wild Hornet', desc: 'Ұстаушы (соғып жарылу)' },
+                    mg_pickup: { name: 'ДШК бар пикап', desc: 'Мобильді ӘӘҚ тобы' },
+                    zu23: { name: 'ЗУ-23-2', desc: 'Қос зениттік қондырғы' },
+                    gepard: { name: 'ЗСУ Gepard', desc: 'Жылдам атылатын зенитка' },
+                    buk: { name: 'ЗРК Бук-М1', desc: 'Орташа зымыран кешені' },
+                    patriot: { name: 'ЗРК Patriot', desc: 'Алыс қашықтықтағы ӘӘҚ' },
+                    mig29: { name: 'МиГ-29', desc: 'Жылдам ұстаушы жойғыш' }
+                }
+            }
+        };
+
+        let currentLang = 'uk';
+
+        function changeLanguage(langKey) {
+            currentLang = langKey;
+            const t = TRANSLATIONS[langKey];
+            
+            document.getElementById('lbl-budget').innerText = t.budget;
+            document.getElementById('lbl-score').innerText = t.score;
+            document.getElementById('lbl-spawned').innerText = t.spawned;
+            document.getElementById('lbl-speed').innerText = t.speed;
+            document.getElementById('lbl-subtitle').innerText = t.subtitle;
+            document.getElementById('btn-start').innerText = t.start;
+            document.getElementById('btn-load').innerText = t.load;
+            document.getElementById('lbl-pause').innerText = t.pause;
+            document.getElementById('btn-resume').innerText = t.resume;
+            document.getElementById('btn-save').innerText = t.save;
+            document.getElementById('btn-menu').innerText = t.menu;
+
+            initShopUI();
+        }
+
+        // МОДЕЛИ ТЕХНИКИ И БПЛА (SVG В КОДЕ)
+        const SPRITES = {};
+
+        function loadSprites() {
+            const svgData = {
+                // ВРАГИ
+                shahed: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500"><g transform="translate(250, 250)">
+                    <path d="M 0 -220 L -210 180 L -180 180 L -140 160 L 0 160 L 140 160 L 180 180 L 210 180 Z" fill="#181a1c"/>
+                    <path d="M 0 -235 C -25 -235, -30 -160, -30 -20 L -30 165 L 30 165 L 30 -20 Z" fill="#202428"/>
+                    <ellipse cx="0" cy="198" rx="85" ry="7" fill="#181a1c"/>
+                </g></svg>`,
+                gerbera: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500"><g transform="translate(250, 250)">
+                    <path d="M -180 10 L 0 -40 L 180 10 L 20 25 L -20 25 Z" fill="#d1d5db"/>
+                    <path d="M 0 -180 L -18 100 L 18 100 Z" fill="#e5e7eb"/>
+                </g></svg>`,
+                lancet: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500"><g transform="translate(250, 250)">
+                    <path d="M -160 -120 L 0 -50 L 160 -120 L 0 50 Z" fill="#4b5563"/>
+                    <rect x="-14" y="-180" width="28" height="340" rx="14" fill="#6b7280"/>
+                </g></svg>`,
+                orlan: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500"><g transform="translate(250, 250)">
+                    <path d="M -220 -10 L 0 -25 L 220 -10 L 0 5 Z" fill="#9ca3af"/>
+                    <path d="M 0 -160 L -16 120 L 16 120 Z" fill="#d1d5db"/>
+                </g></svg>`,
+                zala: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500"><g transform="translate(250, 250)">
+                    <path d="M 0 -130 L -190 80 L 0 50 L 190 80 Z" fill="#cbd5e1"/>
+                </g></svg>`,
+                supercam: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500"><g transform="translate(250, 250)">
+                    <path d="M 0 -100 L -230 20 L 0 10 L 230 20 Z" fill="#f8fafc"/>
+                </g></svg>`,
+                missile: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500"><g transform="translate(250, 250)">
+                    <path d="M -140 20 L 0 -10 L 140 20 Z" fill="#334155"/>
+                    <path d="M -14 -220 L 14 -220 L 14 170 L -14 170 Z" fill="#1e293b"/>
+                </g></svg>`,
+
+                // ТЕХНИКА ПВО (ЮНИТЫ)
+                fpv_sprite: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><g transform="translate(100,100)">
+                    <line x1="-60" y1="-60" x2="60" y2="60" stroke="#f97316" stroke-width="12"/>
+                    <line x1="60" y1="-60" x2="-60" y2="60" stroke="#f97316" stroke-width="12"/>
+                    <circle cx="-60" cy="-60" r="25" fill="#1e293b" stroke="#facc15" stroke-width="6"/>
+                    <circle cx="60" cy="-60" r="25" fill="#1e293b" stroke="#facc15" stroke-width="6"/>
+                    <circle cx="-60" cy="60" r="25" fill="#1e293b" stroke="#facc15" stroke-width="6"/>
+                    <circle cx="60" cy="60" r="25" fill="#1e293b" stroke="#facc15" stroke-width="6"/>
+                    <rect x="-25" y="-35" width="50" height="70" rx="10" fill="#0f172a" stroke="#f97316" stroke-width="5"/>
+                    <circle cx="0" cy="-35" r="12" fill="#38bdf8"/>
+                </g></svg>`,
+
+                pickup_sprite: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300"><g transform="translate(150,150)">
+                    <rect x="-50" y="-100" width="100" height="200" rx="15" fill="#334155"/>
+                    <rect x="-42" y="-90" width="84" height="60" fill="#1e293b"/>
+                    <circle cx="0" cy="30" r="28" fill="#f97316"/>
+                    <line x1="0" y1="30" x2="0" y2="-70" stroke="#000" stroke-width="12"/>
+                </g></svg>`,
+
+                zu23_sprite: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300"><g transform="translate(150,150)">
+                    <circle cx="0" cy="0" r="70" fill="#475569" stroke="#f97316" stroke-width="8"/>
+                    <line x1="-18" y1="20" x2="-18" y2="-120" stroke="#0f172a" stroke-width="14"/>
+                    <line x1="18" y1="20" x2="18" y2="-120" stroke="#0f172a" stroke-width="14"/>
+                </g></svg>`,
+
+                gepard_sprite: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300"><g transform="translate(150,150)">
+                    <rect x="-65" y="-110" width="130" height="220" rx="20" fill="#1e293b" stroke="#475569" stroke-width="6"/>
+                    <circle cx="0" cy="0" r="50" fill="#334155"/>
+                    <line x1="-60" y1="0" x2="-60" y2="-130" stroke="#f97316" stroke-width="12"/>
+                    <line x1="60" y1="0" x2="60" y2="-130" stroke="#f97316" stroke-width="12"/>
+                </g></svg>`,
+
+                buk_sprite: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300"><g transform="translate(150,150)">
+                    <rect x="-70" y="-120" width="140" height="240" rx="15" fill="#1e293b"/>
+                    <rect x="-45" y="-90" width="18" height="150" fill="#f8fafc" stroke="#dc2626" stroke-width="3"/>
+                    <rect x="-15" y="-90" width="18" height="150" fill="#f8fafc" stroke="#dc2626" stroke-width="3"/>
+                    <rect x="15" y="-90" width="18" height="150" fill="#f8fafc" stroke="#dc2626" stroke-width="3"/>
+                    <rect x="45" y="-90" width="18" height="150" fill="#f8fafc" stroke="#dc2626" stroke-width="3"/>
+                </g></svg>`,
+
+                patriot_sprite: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300"><g transform="translate(150,150)">
+                    <rect x="-75" y="-130" width="150" height="260" rx="10" fill="#334155"/>
+                    <rect x="-60" y="-100" width="120" height="180" fill="#0f172a" stroke="#f97316" stroke-width="5"/>
+                </g></svg>`,
+
+                mig29_sprite: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300"><g transform="translate(150,150)">
+                    <path d="M 0 -140 L -120 80 L -60 120 L 0 80 L 60 120 L 120 80 Z" fill="#38bdf8"/>
+                </g></svg>`
+            };
+
+            for (let key in svgData) {
+                const img = new Image();
+                img.src = 'data:image/svg+xml;utf8,' + encodeURIComponent(svgData[key]);
+                SPRITES[key] = img;
+            }
+        }
+        loadSprites();
+
+        const map = L.map('map', {
+            center: [48.5, 31.2],
+            zoom: 6, minZoom: 5, maxZoom: 10, zoomControl: false
+        });
+
+        L.tileLayer(`https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png?key=${apiKey}`, { subdomains: 'abcd', maxZoom: 19 }).addTo(map);
+
+        const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
 
-        let width, height;
+        function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
 
-        function resizeCanvas() {
-            width = canvas.width = window.innerWidth;
-            height = canvas.height = window.innerHeight;
-            initCities();
-        }
-
-        let cities = [];
-
-        // Список городов
-        const cityData = [
-            { name: "Киев", rx: 0.48, ry: 0.32 },
-            { name: "Харьков", rx: 0.78, ry: 0.35 },
-            { name: "Одесса", rx: 0.50, ry: 0.78 },
-            { name: "Днепр", rx: 0.68, ry: 0.52 },
-            { name: "Львов", rx: 0.18, ry: 0.38 },
-            { name: "Запорожье", rx: 0.72, ry: 0.60 },
-            { name: "Кривой Рог", rx: 0.61, ry: 0.58 },
-            { name: "Николаев", rx: 0.54, ry: 0.70 },
-            { name: "Мариуполь", rx: 0.82, ry: 0.68 },
-            { name: "Винница", rx: 0.38, ry: 0.48 },
-            { name: "Полтава", rx: 0.66, ry: 0.38 },
-            { name: "Чернигов", rx: 0.50, ry: 0.20 },
-            { name: "Черкассы", rx: 0.53, ry: 0.46 },
-            { name: "Житомир", rx: 0.38, ry: 0.33 },
-            { name: "Сумы", rx: 0.68, ry: 0.23 },
-            { name: "Хмельницкий", rx: 0.30, ry: 0.45 },
-            { name: "Ровно", rx: 0.27, ry: 0.30 },
-            { name: "Кропивницкий", rx: 0.56, ry: 0.54 },
-            { name: "Ивано-Франковск", rx: 0.20, ry: 0.52 },
-            { name: "Тернополь", rx: 0.25, ry: 0.42 },
-            { name: "Луцк", rx: 0.22, ry: 0.26 },
-            { name: "Ужгород", rx: 0.10, ry: 0.55 },
-            { name: "Черновцы", rx: 0.26, ry: 0.58 }
+        const ukraineBoundsPolygon = [
+            [52.3, 33.2], [52.1, 31.8], [51.5, 30.6], [51.3, 29.1], [51.9, 28.2],
+            [51.5, 25.1], [50.8, 24.2], [49.9, 22.7], [48.0, 23.6], [47.9, 25.8],
+            [48.2, 26.6], [48.3, 27.5], [46.4, 29.9], [45.4, 29.6], [45.3, 30.2],
+            [46.6, 31.5], [46.5, 32.5], [46.1, 33.6], [46.0, 34.8], [46.8, 36.8],
+            [47.1, 38.2], [48.5, 38.3], [49.9, 40.1], [50.4, 38.0], [51.2, 35.3], [52.3, 33.2]
         ];
 
-        function initCities() {
-            cities = cityData.map(c => ({
-                name: c.name,
-                x: c.rx * width,
-                y: c.ry * height,
-                pulse: Math.random() * Math.PI * 2
-            }));
-            document.getElementById('stat-cities').innerText = cities.length;
+        function isPointInPolygon(point, vs) {
+            let x = point[0], y = point[1];
+            let inside = false;
+            for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+                let xi = vs[i][0], yi = vs[i][1];
+                let xj = vs[j][0], yj = vs[j][1];
+                let intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+                if (intersect) inside = !inside;
+            }
+            return inside;
         }
 
-        class Aircraft {
-            constructor(id, color) {
-                this.id = id;
-                this.color = color || '#ff3355';
-                
-                this.route = this.generateLongRoute();
-                this.targetIndex = 1;
+        const UNIT_TYPES = {
+            fpv: { cost: 150, range: 40000, fireRate: 0.5, damage: 100, bulletSpeed: 0, type: 'fpv', speed: 18, spriteKey: 'fpv_sprite', size: 18 },
+            mg_pickup: { cost: 250, range: 35000, fireRate: 0.15, damage: 3, bulletSpeed: 110, type: 'mobile', speed: 12, accuracy: 0.65, spriteKey: 'pickup_sprite', size: 24 },
+            zu23: { cost: 450, range: 50000, fireRate: 0.12, damage: 5, bulletSpeed: 130, type: 'static', accuracy: 0.72, spriteKey: 'zu23_sprite', size: 26 },
+            gepard: { cost: 900, range: 75000, fireRate: 0.08, damage: 7, bulletSpeed: 160, type: 'mobile', speed: 10, accuracy: 0.85, spriteKey: 'gepard_sprite', size: 28 },
+            buk: { cost: 1600, range: 130000, fireRate: 1.6, damage: 70, bulletSpeed: 220, type: 'static', accuracy: 0.95, spriteKey: 'buk_sprite', size: 30 },
+            patriot: { cost: 2800, range: 200000, fireRate: 2.2, damage: 130, bulletSpeed: 300, type: 'static', accuracy: 0.99, spriteKey: 'patriot_sprite', size: 32 },
+            mig29: { cost: 3500, range: 150000, fireRate: 1.0, damage: 50, bulletSpeed: 250, type: 'jet', speed: 25, accuracy: 0.9, spriteKey: 'mig29_sprite', size: 32 }
+        };
 
-                this.x = this.route[0].x;
-                this.y = this.route[0].y;
+        const ENEMY_TYPES = {
+            shahed: { name: 'Шахед-136', speed: 0.8, hp: 35, maxHp: 35, reward: 200, key: 'shahed', size: 20 },
+            gerbera: { name: 'Гербера', speed: 1.1, hp: 12, maxHp: 12, reward: 150, key: 'gerbera', size: 16 },
+            lancet: { name: 'Ланцет', speed: 1.8, hp: 10, maxHp: 10, reward: 180, key: 'lancet', size: 18 },
+            orlan: { name: 'Орлан-10', speed: 1.0, hp: 18, maxHp: 18, reward: 160, key: 'orlan', size: 20 },
+            zala: { name: 'ZALA 421', speed: 1.2, hp: 15, maxHp: 15, reward: 170, key: 'zala', size: 18 },
+            supercam: { name: 'Supercam', speed: 1.4, hp: 20, maxHp: 20, reward: 190, key: 'supercam', size: 22 },
+            missile: { name: 'Ракета Х-101', speed: 3.2, hp: 55, maxHp: 55, reward: 350, key: 'missile', size: 26 }
+        };
 
-                const initialDx = this.route[1].x - this.x;
-                const initialDy = this.route[1].y - this.y;
-                this.angle = Math.atan2(initialDy, initialDx);
+        const CITIES = [
+            { name: "Київ", lat: 50.4501, lng: 30.5234 },
+            { name: "Харків", lat: 49.9935, lng: 36.2304 },
+            { name: "Одеса", lat: 46.4825, lng: 30.7233 },
+            { name: "Дніпро", lat: 48.4647, lng: 35.0462 },
+            { name: "Львів", lat: 49.8383, lng: 24.0232 },
+            { name: "Запоріжжя", lat: 47.8388, lng: 35.1396 },
+            { name: "Кривий Ріг", lat: 47.9105, lng: 33.3918 },
+            { name: "Миколаїв", lat: 46.9750, lng: 31.9946 },
+            { name: "Вінниця", lat: 49.2331, lng: 28.4682 },
+            { name: "Полтава", lat: 49.5883, lng: 34.5514 },
+            { name: "Чернігів", lat: 51.4982, lng: 31.2893 },
+            { name: "Суми", lat: 50.9077, lng: 34.7981 },
+            { name: "Черкаси", lat: 49.4444, lng: 32.0597 },
+            { name: "Житомир", lat: 50.2547, lng: 28.6587 },
+            { name: "Кропивницький", lat: 48.5079, lng: 32.2623 }
+        ];
 
-                this.speed = 2.0 + Math.random() * 0.8; 
-                this.turnSpeed = 0.03; // Очень плавная дуга при повороте
-                
-                this.history = [];
-                this.maxHistory = 100;
+        const spawnPoints = [
+            { lat: 52.1, lng: 31.8 }, { lat: 52.3, lng: 33.2 }, { lat: 51.5, lng: 34.8 },
+            { lat: 50.8, lng: 35.5 }, { lat: 49.9, lng: 38.1 }, { lat: 48.5, lng: 38.3 },
+            { lat: 45.2, lng: 33.5 }, { lat: 45.4, lng: 35.8 }, { lat: 46.1, lng: 36.5 }
+        ];
+
+        let gameState = { money: 2000, score: 0, spawnedCount: 0, speed: 1, selectedBuild: null, selectedUnit: null, isPaused: true };
+        let units = [], enemies = [], bullets = [], explosions = [];
+
+        function latLngToPoint(lat, lng) {
+            const p = map.latLngToContainerPoint([lat, lng]);
+            return { x: p.x, y: p.y };
+        }
+
+        class Unit {
+            constructor(lat, lng, type) {
+                this.lat = lat; this.lng = lng; this.type = type;
+                this.stats = UNIT_TYPES[type];
+                this.targetLat = lat; this.targetLng = lng;
+                this.lastShot = 0; this.isMoving = false; this.angle = 0;
             }
 
-            generateLongRoute() {
-                let shuffled = [...cities].sort(() => Math.random() - 0.5);
-                return shuffled.slice(0, 6 + Math.floor(Math.random() * 6));
+            update(dt) {
+                if (this.type === 'fpv') {
+                    const target = this.findTarget();
+                    if (target) {
+                        this.targetLat = target.lat;
+                        this.targetLng = target.lng;
+                        this.isMoving = true;
+
+                        const cur = L.latLng(this.lat, this.lng);
+                        const ePos = L.latLng(target.lat, target.lng);
+                        
+                        if (cur.distanceTo(ePos) < 1500) {
+                            createExplosion(target.lat, target.lng);
+                            target.hp -= 100;
+                            if (target.hp <= 0) {
+                                gameState.money += target.stats.reward;
+                                gameState.score += 1;
+                                updateUI();
+                            }
+                            return false; 
+                        }
+                    }
+                }
+
+                if (this.isMoving) {
+                    const cur = L.latLng(this.lat, this.lng);
+                    const dest = L.latLng(this.targetLat, this.targetLng);
+                    const dist = cur.distanceTo(dest);
+
+                    if (dist < 100) {
+                        this.isMoving = false;
+                    } else {
+                        const moveDist = (this.stats.speed * 1000 * dt);
+                        const ratio = Math.min(moveDist / dist, 1);
+                        const p1 = latLngToPoint(this.lat, this.lng);
+                        this.lat += (this.targetLat - this.lat) * ratio;
+                        this.lng += (this.targetLng - this.lng) * ratio;
+                        const p2 = latLngToPoint(this.lat, this.lng);
+                        this.angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+                    }
+                }
+
+                if (this.type !== 'fpv') {
+                    this.lastShot += dt;
+                    if (this.lastShot >= this.stats.fireRate) {
+                        const target = this.findTarget();
+                        if (target) { this.shoot(target); this.lastShot = 0; }
+                    }
+                }
+
+                return true;
             }
 
-            update() {
-                if (this.targetIndex >= this.route.length) {
-                    this.route = this.generateLongRoute();
-                    this.targetIndex = 0;
+            findTarget() {
+                let closest = null; let minDist = this.stats.range;
+                const pos = L.latLng(this.lat, this.lng);
+                for (let enemy of enemies) {
+                    const ePos = L.latLng(enemy.lat, enemy.lng);
+                    const d = pos.distanceTo(ePos);
+                    if (d <= minDist) { minDist = d; closest = enemy; }
                 }
+                return closest;
+            }
 
-                const target = this.route[this.targetIndex];
-
-                const dx = target.x - this.x;
-                const dy = target.y - this.y;
-                const targetAngle = Math.atan2(dy, dx);
-
-                let diff = targetAngle - this.angle;
-
-                // Приведение угла к пределу -PI .. PI
-                while (diff < -Math.PI) diff += Math.PI * 2;
-                while (diff > Math.PI) diff -= Math.PI * 2;
-
-                // Плавное изменение направления
-                this.angle += diff * this.turnSpeed;
-
-                // Движение вперед без сдвига в стороны (без тряски)
-                this.x += Math.cos(this.angle) * this.speed;
-                this.y += Math.sin(this.angle) * this.speed;
-
-                this.history.push({ x: this.x, y: this.y });
-                if (this.history.length > this.maxHistory) {
-                    this.history.shift();
-                }
-
-                const distanceToTarget = Math.hypot(dx, dy);
-                if (distanceToTarget < 40) {
-                    this.targetIndex++;
-                }
+            shoot(target) {
+                const isHit = Math.random() < this.stats.accuracy;
+                bullets.push(new Bullet(this.lat, this.lng, target, this.stats.damage, this.stats.bulletSpeed, isHit));
             }
 
             draw() {
-                // Шлейф
-                if (this.history.length > 1) {
-                    ctx.beginPath();
-                    ctx.moveTo(this.history[0].x, this.history[0].y);
+                const p = latLngToPoint(this.lat, this.lng);
 
-                    for (let i = 1; i < this.history.length; i++) {
-                        ctx.lineTo(this.history[i].x, this.history[i].y);
-                    }
-
-                    ctx.strokeStyle = this.color;
-                    ctx.lineWidth = 2;
-                    ctx.lineCap = 'round';
-                    ctx.lineJoin = 'round';
-                    ctx.shadowColor = this.color;
-                    ctx.shadowBlur = 8;
-                    ctx.stroke();
-                    ctx.shadowBlur = 0;
+                if (gameState.selectedUnit === this) {
+                    const metersPerPixel = 40075016.686 * Math.abs(Math.cos(this.lat * Math.PI / 180)) / Math.pow(2, map.getZoom() + 8);
+                    const radiusPx = this.stats.range / metersPerPixel;
+                    ctx.beginPath(); ctx.arc(p.x, p.y, radiusPx, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(249, 115, 22, 0.12)'; ctx.fill();
+                    ctx.strokeStyle = '#f97316'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]); ctx.stroke(); ctx.setLineDash([]);
                 }
 
-                // Сам летящий объект
                 ctx.save();
-                ctx.translate(this.x, this.y);
-                ctx.rotate(this.angle);
-
-                ctx.fillStyle = '#ffffff';
-                ctx.shadowColor = this.color;
-                ctx.shadowBlur = 10;
-
-                ctx.beginPath();
-                ctx.moveTo(8, 0);
-                ctx.lineTo(-6, -5);
-                ctx.lineTo(-3, 0);
-                ctx.lineTo(-6, 5);
-                ctx.closePath();
-                ctx.fill();
-
+                ctx.translate(p.x, p.y);
+                ctx.rotate(this.angle + Math.PI/2);
+                const img = SPRITES[this.stats.spriteKey];
+                if (img) ctx.drawImage(img, -this.stats.size/2, -this.stats.size/2, this.stats.size, this.stats.size);
                 ctx.restore();
             }
         }
 
-        let aircrafts = [];
-        const colors = ['#ff3355', '#38bdf8', '#fbbf24', '#a855f7', '#4ade80'];
+        class Enemy {
+            constructor(typeKey) {
+                this.stats = ENEMY_TYPES[typeKey];
+                this.hp = this.stats.hp;
+                
+                const sp = spawnPoints[Math.floor(Math.random() * spawnPoints.length)];
+                this.lat = sp.lat; this.lng = sp.lng;
 
-        function initAircrafts() {
-            aircrafts = [];
-            for (let i = 0; i < 3; i++) {
-                aircrafts.push(new Aircraft(i + 1, colors[i % colors.length]));
+                this.route = this.generateCityRoute();
+                this.targetIdx = 0;
+
+                const next = this.route[0];
+                this.angle = Math.atan2(next.lat - this.lat, next.lng - this.lng);
+                
+                this.trail = [[this.lat, this.lng]];
+                gameState.spawnedCount++;
+                updateUI();
             }
-            document.getElementById('stat-objects').innerText = aircrafts.length;
+
+            generateCityRoute() {
+                let shuffled = [...CITIES].sort(() => Math.random() - 0.5);
+                return shuffled.slice(0, 3 + Math.floor(Math.random() * 3));
+            }
+
+            update(dt) {
+                if (this.targetIdx >= this.route.length) {
+                    this.route = this.generateCityRoute();
+                    this.targetIdx = 0;
+                }
+
+                const target = this.route[this.targetIdx];
+                const dLat = target.lat - this.lat;
+                const dLng = target.lng - this.lng;
+                const targetAngle = Math.atan2(dLat, dLng);
+
+                // Плавная интерполяция разворота по дуге (БЕЗ ТРЯСКИ!)
+                let diff = targetAngle - this.angle;
+                while (diff < -Math.PI) diff += Math.PI * 2;
+                while (diff > Math.PI) diff -= Math.PI * 2;
+
+                this.angle += diff * 0.03;
+
+                // Движение вперед
+                this.lat += Math.sin(this.angle + Math.PI/2) * (this.stats.speed * 0.005);
+                this.lng += Math.cos(this.angle + Math.PI/2) * (this.stats.speed * 0.005);
+
+                this.trail.push([this.lat, this.lng]);
+                if (this.trail.length > 25) this.trail.shift();
+
+                const dist = Math.hypot(dLat, dLng);
+                if (dist < 0.2) this.targetIdx++;
+
+                return this.hp > 0;
+            }
+
+            draw() {
+                if (this.trail.length > 1) {
+                    ctx.beginPath();
+                    const startP = latLngToPoint(this.trail[0][0], this.trail[0][1]);
+                    ctx.moveTo(startP.x, startP.y);
+                    for (let i = 1; i < this.trail.length; i++) {
+                        const pt = latLngToPoint(this.trail[i][0], this.trail[i][1]);
+                        ctx.lineTo(pt.x, pt.y);
+                    }
+                    ctx.strokeStyle = 'rgba(239, 68, 68, 0.35)';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+
+                const p = latLngToPoint(this.lat, this.lng);
+                ctx.save();
+                ctx.translate(p.x, p.y);
+                ctx.rotate(this.angle + Math.PI/2);
+                const img = SPRITES[this.stats.key];
+                if (img) ctx.drawImage(img, -this.stats.size/2, -this.stats.size/2, this.stats.size, this.stats.size);
+                ctx.restore();
+
+                // Полоска ХП
+                if (this.hp < this.stats.maxHp) {
+                    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                    ctx.fillRect(p.x - 15, p.y - this.stats.size - 6, 30, 4);
+                    ctx.fillStyle = '#ef4444';
+                    ctx.fillRect(p.x - 15, p.y - this.stats.size - 6, (this.hp / this.stats.maxHp) * 30, 4);
+                }
+            }
         }
 
-        function addAircraft() {
-            const newId = aircrafts.length + 1;
-            const color = colors[aircrafts.length % colors.length];
-            aircrafts.push(new Aircraft(newId, color));
-            document.getElementById('stat-objects').innerText = aircrafts.length;
+        class Bullet {
+            constructor(lat, lng, target, damage, speed, isHit) {
+                this.lat = lat; this.lng = lng; this.target = target;
+                this.damage = damage; this.speed = speed; this.isHit = isHit;
+                this.targetLat = target.lat; this.targetLng = target.lng;
+            }
+
+            update(dt) {
+                if (this.target && this.target.hp > 0) {
+                    this.targetLat = this.target.lat;
+                    this.targetLng = this.target.lng;
+                }
+
+                const cur = L.latLng(this.lat, this.lng);
+                const dest = L.latLng(this.targetLat, this.targetLng);
+                const dist = cur.distanceTo(dest);
+
+                if (dist < 1500) {
+                    if (this.isHit && this.target && this.target.hp > 0) {
+                        this.target.hp -= this.damage;
+                        if (this.target.hp <= 0) {
+                            createExplosion(this.target.lat, this.target.lng);
+                            gameState.money += this.target.stats.reward;
+                            gameState.score += 1;
+                            updateUI();
+                        }
+                    }
+                    return false;
+                }
+
+                const moveDist = this.speed * 1000 * dt;
+                const ratio = Math.min(moveDist / dist, 1);
+                this.lat += (this.targetLat - this.lat) * ratio;
+                this.lng += (this.targetLng - this.lng) * ratio;
+                return true;
+            }
+
+            draw() {
+                const p = latLngToPoint(this.lat, this.lng);
+                ctx.beginPath(); ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
+                ctx.fillStyle = '#facc15'; ctx.fill();
+            }
         }
 
-        function clearTrails() {
-            aircrafts.forEach(a => a.history = []);
+        function createExplosion(lat, lng) {
+            explosions.push({ lat, lng, radius: 4, maxRadius: 28, alpha: 1 });
         }
 
-        function resetAll() {
-            initAircrafts();
+        let lastTime = performance.now();
+        function gameLoop(time) {
+            const dt = Math.min((time - lastTime) / 1000, 0.1) * gameState.speed;
+            lastTime = time;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (!gameState.isPaused) {
+                // Шанс спавна врагов
+                if (Math.random() < 0.02 * gameState.speed) {
+                    const keys = Object.keys(ENEMY_TYPES);
+                    enemies.push(new Enemy(keys[Math.floor(Math.random() * keys.length)]));
+                }
+
+                units = units.filter(u => u.update(dt));
+                enemies = enemies.filter(e => e.update(dt));
+                bullets = bullets.filter(b => b.update(dt));
+
+                // Отрисовка взрывов
+                for (let i = explosions.length - 1; i >= 0; i--) {
+                    let ex = explosions[i];
+                    ex.radius += dt * 40;
+                    ex.alpha -= dt * 1.5;
+                    if (ex.alpha <= 0) { explosions.splice(i, 1); continue; }
+                    
+                    const p = latLngToPoint(ex.lat, ex.lng);
+                    ctx.beginPath(); ctx.arc(p.x, p.y, ex.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(249, 115, 22, ${ex.alpha})`; ctx.fill();
+                }
+            }
+
+            units.forEach(u => u.draw());
+            enemies.forEach(e => e.draw());
+            bullets.forEach(b => b.draw());
+
+            requestAnimationFrame(gameLoop);
         }
 
-        function drawMap() {
-            cities.forEach(city => {
-                city.pulse += 0.03;
-                const pSize = Math.sin(city.pulse) * 1.5;
+        function initShopUI() {
+            const container = document.getElementById('sidebar-shop');
+            container.innerHTML = '';
+            const t = TRANSLATIONS[currentLang].units;
 
-                ctx.fillStyle = 'rgba(56, 189, 248, 0.2)';
-                ctx.beginPath();
-                ctx.arc(city.x, city.y, 6 + pSize, 0, Math.PI * 2);
-                ctx.fill();
-
-                ctx.fillStyle = '#38bdf8';
-                ctx.beginPath();
-                ctx.arc(city.x, city.y, 2.5, 0, Math.PI * 2);
-                ctx.fill();
-
-                ctx.fillStyle = 'rgba(209, 213, 219, 0.6)';
-                ctx.font = '11px "Segoe UI", sans-serif';
-                ctx.fillText(city.name, city.x + 8, city.y + 4);
-            });
+            for (let key in UNIT_TYPES) {
+                const u = UNIT_TYPES[key];
+                const item = document.createElement('button');
+                item.className = 'shop-item';
+                item.onclick = () => selectBuild(key);
+                item.innerHTML = `
+                    <div class="name">${t[key]?.name || key}</div>
+                    <div class="price">$${u.cost}</div>
+                    <div class="desc">${t[key]?.desc || ''}</div>
+                `;
+                container.appendChild(item);
+            }
         }
 
-        function animate() {
-            ctx.fillStyle = 'rgba(5, 7, 10, 0.25)';
-            ctx.fillRect(0, 0, width, height);
-
-            drawMap();
-
-            aircrafts.forEach(aircraft => {
-                aircraft.update();
-                aircraft.draw();
-            });
-
-            requestAnimationFrame(animate);
+        function selectBuild(key) {
+            gameState.selectedBuild = key;
+            gameState.selectedUnit = null;
+            document.getElementById('unit-action-panel').style.display = 'none';
         }
 
-        window.addEventListener('resize', resizeCanvas);
-        resizeCanvas();
-        initAircrafts();
-        animate();
+        map.on('click', (e) => {
+            if (gameState.isPaused) return;
+
+            // Клик по карте для постройки или перемещения
+            if (gameState.selectedBuild) {
+                const cost = UNIT_TYPES[gameState.selectedBuild].cost;
+                if (gameState.money >= cost) {
+                    if (isPointInPolygon([e.latlng.lat, e.latlng.lng], ukraineBoundsPolygon)) {
+                        units.push(new Unit(e.latlng.lat, e.latlng.lng, gameState.selectedBuild));
+                        gameState.money -= cost;
+                        gameState.selectedBuild = null;
+                        updateUI();
+                    } else {
+                        showToast(TRANSLATIONS[currentLang].toastErr);
+                    }
+                }
+            } else if (gameState.selectedUnit && (gameState.selectedUnit.stats.type === 'mobile' || gameState.selectedUnit.stats.type === 'jet')) {
+                gameState.selectedUnit.targetLat = e.latlng.lat;
+                gameState.selectedUnit.targetLng = e.latlng.lng;
+                gameState.selectedUnit.isMoving = true;
+            } else {
+                // Выбор юнита
+                let clicked = null;
+                const clickPos = L.latLng(e.latlng.lat, e.latlng.lng);
+                units.forEach(u => {
+                    if (L.latLng(u.lat, u.lng).distanceTo(clickPos) < 15000) clicked = u;
+                });
+
+                gameState.selectedUnit = clicked;
+                const panel = document.getElementById('unit-action-panel');
+                if (clicked) {
+                    panel.style.display = 'flex';
+                    document.getElementById('action-unit-name').innerText = TRANSLATIONS[currentLang].units[clicked.type]?.name || clicked.type;
+                    document.getElementById('sell-price-val').innerText = Math.floor(clicked.stats.cost * 0.7);
+                } else {
+                    panel.style.display = 'none';
+                }
+            }
+        });
+
+        function sellSelectedUnit() {
+            if (gameState.selectedUnit) {
+                gameState.money += Math.floor(gameState.selectedUnit.stats.cost * 0.7);
+                units = units.filter(u => u !== gameState.selectedUnit);
+                gameState.selectedUnit = null;
+                document.getElementById('unit-action-panel').style.display = 'none';
+                updateUI();
+            }
+        }
+
+        function showToast(text) {
+            const toast = document.getElementById('error-toast');
+            toast.innerText = text;
+            toast.style.display = 'block';
+            setTimeout(() => toast.style.display = 'none', 3000);
+        }
+
+        function updateUI() {
+            document.getElementById('money-display').innerText = gameState.money;
+            document.getElementById('score-display').innerText = gameState.score;
+            document.getElementById('spawned-display').innerText = gameState.spawnedCount;
+        }
+
+        function toggleSpeed() {
+            if (gameState.speed === 1) gameState.speed = 2;
+            else if (gameState.speed === 2) gameState.speed = 4;
+            else gameState.speed = 1;
+            document.getElementById('speed-btn-txt').innerText = `x${gameState.speed}`;
+        }
+
+        function startNewGame() {
+            units = []; enemies = []; bullets = []; explosions = [];
+            gameState.money = 2000; gameState.score = 0; gameState.spawnedCount = 0;
+            gameState.isPaused = false;
+            document.getElementById('main-menu').style.display = 'none';
+            updateUI();
+        }
+
+        function openPauseMenu() {
+            gameState.isPaused = true;
+            document.getElementById('pause-menu').style.display = 'flex';
+        }
+
+        function resumeGame() {
+            gameState.isPaused = false;
+            document.getElementById('pause-menu').style.display = 'none';
+        }
+
+        function toMainMenu() {
+            document.getElementById('pause-menu').style.display = 'none';
+            document.getElementById('main-menu').style.display = 'flex';
+        }
+
+        function saveGame() {
+            const data = { gameState, units, enemies };
+            localStorage.setItem('skyguard_save', JSON.stringify(data));
+            alert('Збережено!');
+        }
+
+        function loadGame() {
+            const data = localStorage.getItem('skyguard_save');
+            if (data) {
+                const parsed = JSON.parse(data);
+                gameState = parsed.gameState;
+                units = parsed.units.map(u => Object.assign(new Unit(u.lat, u.lng, u.type), u));
+                gameState.isPaused = false;
+                document.getElementById('main-menu').style.display = 'none';
+                updateUI();
+            } else {
+                alert('Збережень не знайдено!');
+            }
+        }
+
+        // Инициализация
+        changeLanguage('uk');
+        requestAnimationFrame(gameLoop);
     </script>
 </body>
 </html>
